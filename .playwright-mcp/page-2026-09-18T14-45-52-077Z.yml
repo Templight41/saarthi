@@ -1,0 +1,17 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: Saarthi
+      - generic [ref=e7]: merchant operations
+    - navigation [ref=e8]:
+      - link "Overview" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - link "Escalations" [ref=e15] [cursor=pointer]:
+        - /url: /escalations
+    - button "Demo" [ref=e19]
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]: Operations
+      - generic [ref=e25]:
+        - generic [ref=e26]: Cases
+        - generic [ref=e28]: No cases yet. Open the demo console to run a scenario.

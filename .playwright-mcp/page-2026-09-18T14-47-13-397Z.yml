@@ -1,0 +1,13 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - generic [ref=f3e6]: Saarthi
+      - generic [ref=f3e7]: merchant operations
+    - navigation [ref=f3e8]:
+      - link "Overview" [ref=f3e9] [cursor=pointer]:
+        - /url: /
+      - link "Escalations" [ref=f3e15] [cursor=pointer]:
+        - /url: /escalations
+    - button "Demo" [ref=f3e19]
+  - main [ref=f3e21]:
+    - generic [ref=f3e22]: Loading case…

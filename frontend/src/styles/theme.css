@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* An operations cockpit, not an admin template.
+   Colour carries state and nothing else: amber is work in flight, teal is
+   verified, red needs a person, violet is memory. Everything else is graphite. */
+@theme {
+  --color-ground: #0f1216;
+  --color-panel: #161b22;
+  --color-panel-raised: #1c222b;
+  --color-line: #262d36;
+  --color-line-bright: #38414d;
+
+  --color-ink: #e8ecf1;
+  --color-ink-dim: #9aa7b6;
+  --color-ink-faint: #6b7787;
+
+  --color-acting: #f5a524;
+  --color-verified: #2dd4bf;
+  --color-danger: #f0524f;
+  --color-memory: #a78bfa;
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every identifier, amount and timestamp is monospaced. This single choice
+   does most of the work of making the product read as operations tooling. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.micro-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+}
+
+.hairline {
+  border-color: var(--color-line);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ground);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 5px;
+  border: 2px solid var(--color-ground);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-line-bright);
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgb(245 165 36 / 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgb(245 165 36 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(245 165 36 / 0);
+  }
+}
+.pulse {
+  animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-slow {
+  animation: spin-slow 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse,
+  .spin-slow {
+    animation: none;
+  }
+}

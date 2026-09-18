@@ -112,6 +112,7 @@ class SaarthiMemory(Protocol):
         merchant_id: str | None = None,
         transaction_id: str | None = None,
         intent_hint: str | None = None,
+        exclude_case_id: str | None = None,
     ) -> dict: ...
 
     async def remember_case(self, session: AsyncSession, case_id: str) -> str | None: ...
@@ -140,9 +141,13 @@ class LocalIndexMemory:
         text: str,
         merchant_id: str | None = None,
         transaction_id: str | None = None,
+        exclude_case_id: str | None = None,
         intent_hint: str | None = None,
     ) -> dict:
         docs = await self._corpus(session)
+        # A case is never its own precedent.
+        if exclude_case_id:
+            docs = [d for d in docs if d.ref_id != exclude_case_id]
         started = utcnow()
         hits: list[MemoryHit] = []
 

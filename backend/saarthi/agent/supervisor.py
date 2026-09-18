@@ -312,6 +312,7 @@ class Supervisor:
                     text=case.original_message,
                     merchant_id=case.merchant_id,
                     transaction_id=case.transaction_id,
+                    exclude_case_id=case.id,
                 ),
                 timeout=self.settings.memory_timeout_seconds,
             )

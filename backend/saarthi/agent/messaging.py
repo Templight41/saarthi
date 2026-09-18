@@ -98,9 +98,13 @@ async def _verify_claims(
 
 
 async def _refund_is_complete(ctx: ToolContext, facts: dict) -> bool:
+    """Look the refund up independently. The planner cannot know its id in
+    advance, so fall back to the transaction's refunds rather than rejecting a
+    claim that is in fact true."""
     refund_id = facts.get("refund_id")
     key = facts.get("idempotency_key")
     refund = None
+
     if refund_id:
         try:
             refund = await refund_service.get_refund(ctx.session, refund_id)
@@ -108,7 +112,25 @@ async def _refund_is_complete(ctx: ToolContext, facts: dict) -> bool:
             refund = None
     if refund is None and key:
         refund = await refund_service.find_refund_by_idempotency_key(ctx.session, key)
-    return refund is not None and refund.status == RefundStatus.COMPLETED
+
+    if refund is None:
+        txn_id = facts.get("transaction_id") or ctx.case.transaction_id
+        if not txn_id:
+            return False
+        refunds = await refund_service.list_refunds_for_transaction(ctx.session, txn_id)
+        completed = [r for r in refunds if r.status == RefundStatus.COMPLETED]
+        if not completed:
+            return False
+        # If the message names an amount, that exact refund must have completed.
+        amount = facts.get("amount")
+        if amount is not None:
+            from decimal import Decimal
+
+            wanted = Decimal(str(amount))
+            return any(Decimal(r.amount) == wanted for r in completed)
+        return True
+
+    return refund.status == RefundStatus.COMPLETED
 
 
 async def _settlement_is_complete(ctx: ToolContext, facts: dict) -> bool:

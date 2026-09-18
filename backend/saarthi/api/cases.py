@@ -281,6 +281,7 @@ async def get_case_context(
             merchant_id=case.merchant_id,
             transaction_id=case.transaction_id,
             intent_hint=case.intent,
+            exclude_case_id=case.id,
         )
     except Exception:  # noqa: BLE001
         memory = None

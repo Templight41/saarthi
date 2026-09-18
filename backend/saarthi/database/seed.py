@@ -187,7 +187,7 @@ def _historical_case(
         requires_human=False,
         original_message=summary,
         resolution=Resolution.AUTONOMOUS,
-        next_sequence=8,
+        next_sequence=11,
         first_action_at=created + timedelta(seconds=6),
         created_at=created,
         updated_at=resolved,
@@ -201,6 +201,10 @@ def _historical_case(
         ("SETTLEMENT_CHECKED", Actor.SAARTHI, "Settlement state checked", 6),
         ("DIAGNOSIS_COMPLETE", Actor.SAARTHI, f"Issue classified: {root_cause}", 9),
         ("POLICY_CHECKED", Actor.SAARTHI, "Action permitted under merchant policy", 11),
+        # Every action row needs a matching started event, or audit coverage
+        # correctly reports the trail as incomplete.
+        ("ACTION_STARTED", Actor.SAARTHI, "Running send_message", 13),
+        ("ACTION_COMPLETED", Actor.SAARTHI, "send_message completed", 15),
         ("ACTION_VERIFIED", Actor.SAARTHI, outcome, duration_seconds - 20),
         ("MESSAGE_SENT", Actor.SAARTHI, "Merchant notified", duration_seconds - 10),
         ("CASE_RESOLVED", Actor.SAARTHI, "Case resolved", duration_seconds),
