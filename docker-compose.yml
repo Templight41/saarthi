@@ -1,0 +1,48 @@
+name: saarthi
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg17
+    container_name: saarthi-postgres
+    environment:
+      POSTGRES_USER: saarthi
+      POSTGRES_PASSWORD: saarthi
+      POSTGRES_DB: saarthi
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saarthi -d saarthi"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: saarthi-n8n
+    profiles: ["n8n"]
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+      N8N_SECURE_COOKIE: "false"
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-saarthi-dev-encryption-key}
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      GENERIC_TIMEZONE: Asia/Kolkata
+      SAARTHI_API_BASE: ${SAARTHI_API_BASE_FOR_N8N:-http://host.docker.internal:8000}
+      SAARTHI_INTERNAL_TOKEN: ${INTERNAL_API_TOKEN:-dev-internal-token}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+
+volumes:
+  pg_data:
+  n8n_data:

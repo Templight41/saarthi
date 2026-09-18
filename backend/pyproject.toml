@@ -1,0 +1,51 @@
+[project]
+name = "saarthi-backend"
+version = "0.1.0"
+description = "Saarthi — Autonomous Merchant Operations Teammate"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi==0.141.1",
+    "uvicorn[standard]>=0.38",
+    "sqlalchemy[asyncio]==2.0.54",
+    "asyncpg==0.31.0",
+    "aiosqlite==0.22.1",
+    "pgvector==0.5.0",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "httpx==0.28.1",
+    "python-multipart>=0.0.20",
+    "google-genai==2.24.0",
+]
+
+[project.optional-dependencies]
+voice = ["sarvamai==0.1.33"]
+whisper = ["faster-whisper>=1.2,<2"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "pytest-asyncio==1.4.0",
+    "anyio>=4.0",
+    "ruff>=0.14",
+]
+
+[tool.setuptools.packages.find]
+include = ["saarthi*"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore:.*Decimal objects natively.*:UserWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
