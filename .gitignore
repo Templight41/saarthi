@@ -27,3 +27,8 @@ whisper_cache/
 
 # OS
 .DS_Store
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.playwright-mcp/
