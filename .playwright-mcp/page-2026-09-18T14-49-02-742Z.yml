@@ -1,0 +1,21 @@
+- generic [ref=f7e3]:
+  - banner [ref=f7e4]:
+    - generic [ref=f7e5]:
+      - generic [ref=f7e6]: Saarthi
+      - generic [ref=f7e7]: merchant operations
+    - navigation [ref=f7e8]:
+      - link "Overview" [ref=f7e9] [cursor=pointer]:
+        - /url: /
+      - link "Escalations" [ref=f7e15] [cursor=pointer]:
+        - /url: /escalations
+    - generic [ref=f7e18]:
+      - generic [ref=f7e19]:
+        - generic "Language model in use" [ref=f7e20]: llm mock
+        - generic "Semantic memory backend" [ref=f7e21]: memory local index
+        - generic "Workflow engine" [ref=f7e22]: wf local
+        - generic "Database" [ref=f7e23]: db postgres
+      - button "Demo" [ref=f7e24]
+  - main [ref=f7e26]:
+    - generic [ref=f7e28]:
+      - generic [ref=f7e29]: Awaiting a decision
+      - generic [ref=f7e30]: Nothing is waiting on a person.

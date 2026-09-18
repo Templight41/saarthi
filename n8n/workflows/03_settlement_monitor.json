@@ -1,0 +1,221 @@
+{
+  "name": "Saarthi \u00b7 Proactive settlement monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Every minute"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "saarthi/settlement-monitor/run-now",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        180
+      ],
+      "name": "Run now",
+      "webhookId": "saarthi-settlement-monitor-run-now"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/settlements/pending-delayed",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        80
+      ],
+      "name": "Find delayed settlements",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        },
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        460,
+        80
+      ],
+      "name": "For each settlement"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_open_case }}",
+              "rightValue": "false",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        80
+      ],
+      "name": "No open case?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/settlements/{{ $json.transaction_id }}/evaluate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"run_id\": \"={{ $json.run_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        20
+      ],
+      "name": "Evaluate and open a case",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Find delayed settlements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Find delayed settlements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find delayed settlements": {
+      "main": [
+        [
+          {
+            "node": "For each settlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "For each settlement": {
+      "main": [
+        [],
+        [
+          {
+            "node": "No open case?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No open case?": {
+      "main": [
+        [
+          {
+            "node": "Evaluate and open a case",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "For each settlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate and open a case": {
+      "main": [
+        [
+          {
+            "node": "For each settlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Scan for overdue settlements nobody has complained about and open a case before they do."
+  }
+}

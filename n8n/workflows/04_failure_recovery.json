@@ -1,0 +1,146 @@
+{
+  "name": "Saarthi \u00b7 Failure recovery",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "saarthi/action-failed",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Action failed",
+      "webhookId": "saarthi-action-failed"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $('Action failed').item.json.body.wait_seconds || 15 }}",
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Back off",
+      "webhookId": "back-off"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/actions/{{ $('Action failed').item.json.body.action_id }}/recover",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"run_id\": \"={{ $('Action failed').item.json.body.run_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Attempt recovery",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "RETRY_LATER",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Retry later?"
+    }
+  ],
+  "connections": {
+    "Action failed": {
+      "main": [
+        [
+          {
+            "node": "Back off",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Back off": {
+      "main": [
+        [
+          {
+            "node": "Attempt recovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attempt recovery": {
+      "main": [
+        [
+          {
+            "node": "Retry later?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry later?": {
+      "main": [
+        [
+          {
+            "node": "Back off",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Back off and ask the backend to recover. The backend decides whether a retry is safe."
+  }
+}

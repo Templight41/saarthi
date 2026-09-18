@@ -1,0 +1,226 @@
+{
+  "name": "Saarthi \u00b7 Human approval",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "saarthi/escalation-created",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Escalation created",
+      "webhookId": "saarthi-escalation-created"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ $json.body.escalation_id }}/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"run_id\": \"={{ $json.body.run_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Notify the reviewer",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ $('Escalation created').item.json.body.escalation_id }}/workflow",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"run_id\": \"={{ $('Escalation created').item.json.body.run_id }}\", \"resume_url\": \"={{ $execution.resumeUrl }}\", \"execution_id\": \"={{ $execution.id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Register the resume URL",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {
+          "webhookSuffix": "approval",
+          "limitWaitTime": true,
+          "resumeAmount": 10,
+          "resumeUnit": "minutes"
+        }
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Await the decision",
+      "webhookId": "saarthi-approval"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ $('Escalation created').item.json.body.escalation_id }}/remind",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"run_id\": \"={{ $('Escalation created').item.json.body.run_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "name": "Check whether it is still pending",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.still_pending }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "name": "Still pending?"
+    }
+  ],
+  "connections": {
+    "Escalation created": {
+      "main": [
+        [
+          {
+            "node": "Notify the reviewer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify the reviewer": {
+      "main": [
+        [
+          {
+            "node": "Register the resume URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register the resume URL": {
+      "main": [
+        [
+          {
+            "node": "Await the decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Await the decision": {
+      "main": [
+        [
+          {
+            "node": "Check whether it is still pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check whether it is still pending": {
+      "main": [
+        [
+          {
+            "node": "Still pending?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still pending?": {
+      "main": [
+        [
+          {
+            "node": "Await the decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Notify a reviewer and wait on a webhook for the decision, reminding every ten minutes. The decision itself is always made in the dashboard."
+  }
+}

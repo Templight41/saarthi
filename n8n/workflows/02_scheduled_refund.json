@@ -1,0 +1,253 @@
+{
+  "name": "Saarthi \u00b7 Scheduled refund",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "saarthi/scheduled-refund",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Scheduled refund requested",
+      "webhookId": "saarthi-scheduled-refund"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $('Scheduled refund requested').item.json.body.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Wait for settlement",
+      "webhookId": "wait-for-settlement"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ $('Scheduled refund requested').item.json.body.run_id }}/settlement",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"case_id\": \"={{ $('Scheduled refund requested').item.json.body.case_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Check settlement",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.settlement_status }}",
+              "rightValue": "COMPLETED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "name": "Settled?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ $('Scheduled refund requested').item.json.body.run_id }}/complete",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"case_id\": \"={{ $('Scheduled refund requested').item.json.body.case_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        -120
+      ],
+      "name": "Stand down the refund",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.threshold_reached }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        120
+      ],
+      "name": "Deadline reached?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ $('Scheduled refund requested').item.json.body.run_id }}/execute",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"case_id\": \"={{ $('Scheduled refund requested').item.json.body.case_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        40
+      ],
+      "name": "Execute the refund",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Scheduled refund requested": {
+      "main": [
+        [
+          {
+            "node": "Wait for settlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for settlement": {
+      "main": [
+        [
+          {
+            "node": "Check settlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check settlement": {
+      "main": [
+        [
+          {
+            "node": "Settled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settled?": {
+      "main": [
+        [
+          {
+            "node": "Stand down the refund",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Deadline reached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deadline reached?": {
+      "main": [
+        [
+          {
+            "node": "Execute the refund",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait for settlement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Wait, check settlement, stand the refund down if it settles, execute it if the deadline passes. Every decision is made by the backend; n8n only does the waiting."
+  }
+}

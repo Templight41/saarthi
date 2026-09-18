@@ -1,0 +1,106 @@
+{
+  "name": "Saarthi \u00b7 Case memory ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "saarthi/case-resolved",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "Case resolved",
+      "webhookId": "saarthi-case-resolved"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/cases/{{ $json.body.case_id }}/memory-document",
+        "sendBody": false,
+        "specifyBody": "json",
+        "jsonBody": "",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "Fetch memory document",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/memory/ingest",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"case_id\": \"={{ $('Case resolved').item.json.body.case_id }}\", \"run_id\": \"={{ $('Case resolved').item.json.body.run_id }}\"}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "name": "Ingest into memory",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "saarthi-internal",
+          "name": "Saarthi Internal Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Case resolved": {
+      "main": [
+        [
+          {
+            "node": "Fetch memory document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch memory document": {
+      "main": [
+        [
+          {
+            "node": "Ingest into memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "On resolution, build the case memory document and write it to the semantic store."
+  }
+}
