@@ -6,6 +6,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 *.egg-info/
+.playwright-mcp/
 
 # Environment
 .env
@@ -31,4 +32,5 @@ whisper_cache/
 # Tool caches
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .playwright-mcp/
