@@ -89,17 +89,30 @@ KNOWLEDGE_DOCS: list[dict] = [
 
 
 async def seed_knowledge(session, memory) -> int:
+    """Seed procedures, and index the historical cases the seed created.
+
+    Without the second step the memory panel would be empty on a fresh demo,
+    because resolved cases are only indexed when they resolve.
+    """
     from sqlalchemy import func, select
 
-    from ..database.models import MemoryDocument
+    from ..database.enums import CaseStatus
+    from ..database.models import Case, MemoryDocument
+    from .service import ingest_case_document
 
     existing = await session.scalar(
         select(func.count()).select_from(MemoryDocument).where(MemoryDocument.kind == "knowledge")
     )
-    if existing:
-        return 0
-    for doc in KNOWLEDGE_DOCS:
-        await memory.add_knowledge(
-            session, title=doc["title"], content=doc["body"], tags=doc["tags"]
-        )
-    return len(KNOWLEDGE_DOCS)
+    created = 0
+    if not existing:
+        for doc in KNOWLEDGE_DOCS:
+            await memory.add_knowledge(
+                session, title=doc["title"], content=doc["body"], tags=doc["tags"]
+            )
+        created = len(KNOWLEDGE_DOCS)
+
+    resolved = await session.scalars(select(Case).where(Case.status == CaseStatus.RESOLVED))
+    for case in resolved:
+        if await ingest_case_document(session, case.id):
+            created += 1
+    return created
