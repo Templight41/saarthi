@@ -20,7 +20,7 @@
     {
       "parameters": {
         "resume": "timeInterval",
-        "amount": "={{ $('Action failed').item.json.body.wait_seconds || 15 }}",
+        "amount": "={{ ($('Action failed').item.json.body ?? $('Action failed').item.json).wait_seconds || 15 }}",
         "unit": "seconds"
       },
       "type": "n8n-nodes-base.wait",
@@ -35,14 +35,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/actions/{{ $('Action failed').item.json.body.action_id }}/recover",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/actions/{{ ($('Action failed').item.json.body ?? $('Action failed').item.json).action_id }}/recover",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"run_id\": \"={{ $('Action failed').item.json.body.run_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"run_id\": \"{{ ($('Action failed').item.json.body ?? $('Action failed').item.json).run_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -51,13 +59,7 @@
         440,
         0
       ],
-      "name": "Attempt recovery",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Attempt recovery"
     },
     {
       "parameters": {
@@ -142,5 +144,6 @@
   },
   "meta": {
     "description": "Back off and ask the backend to recover. The backend decides whether a retry is safe."
-  }
+  },
+  "id": "saarthi-failure-recovery"
 }

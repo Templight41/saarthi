@@ -48,6 +48,9 @@ async def lifespan(app: FastAPI):
     prepare = getattr(runtime.memory, "ensure_schema", None)
     if prepare is not None:
         await prepare(runtime.session_factory)
+    warm = getattr(runtime.memory, "warm", None)
+    if warm is not None:
+        await warm()
     if settings.seed_on_startup:
         async with runtime.session_factory() as session:
             existing = await session.scalar(select(func.count()).select_from(Merchant))

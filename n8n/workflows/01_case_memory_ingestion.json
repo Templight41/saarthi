@@ -20,14 +20,22 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/cases/{{ $json.body.case_id }}/memory-document",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/cases/{{ ($json.body ?? $json).case_id }}/memory-document",
         "sendBody": false,
         "specifyBody": "json",
         "jsonBody": "",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -36,13 +44,7 @@
         220,
         0
       ],
-      "name": "Fetch memory document",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Fetch memory document"
     },
     {
       "parameters": {
@@ -50,11 +52,19 @@
         "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/memory/ingest",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"case_id\": \"={{ $('Case resolved').item.json.body.case_id }}\", \"run_id\": \"={{ $('Case resolved').item.json.body.run_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"case_id\": \"{{ ($('Case resolved').item.json.body ?? $('Case resolved').item.json).case_id }}\", \"run_id\": \"{{ ($('Case resolved').item.json.body ?? $('Case resolved').item.json).run_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -63,13 +73,7 @@
         440,
         0
       ],
-      "name": "Ingest into memory",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Ingest into memory"
     }
   ],
   "connections": {
@@ -102,5 +106,6 @@
   },
   "meta": {
     "description": "On resolution, build the case memory document and write it to the semantic store."
-  }
+  },
+  "id": "saarthi-memory-ingest"
 }

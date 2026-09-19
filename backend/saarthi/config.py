@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-001"
     embedding_dimensions: int = 768
     memory_top_k: int = 5
-    memory_timeout_seconds: float = 12.0
+    memory_timeout_seconds: float = 20.0
 
     # --- Workflows ---
     workflow_engine: Literal["auto", "n8n", "local"] = "n8n"

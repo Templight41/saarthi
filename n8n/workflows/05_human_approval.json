@@ -20,14 +20,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ $json.body.escalation_id }}/notify",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ ($json.body ?? $json).escalation_id }}/notify",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"run_id\": \"={{ $json.body.run_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"run_id\": \"{{ ($json.body ?? $json).run_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -36,25 +44,27 @@
         220,
         0
       ],
-      "name": "Notify the reviewer",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Notify the reviewer"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ $('Escalation created').item.json.body.escalation_id }}/workflow",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ ($('Escalation created').item.json.body ?? $('Escalation created').item.json).escalation_id }}/workflow",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"run_id\": \"={{ $('Escalation created').item.json.body.run_id }}\", \"resume_url\": \"={{ $execution.resumeUrl }}\", \"execution_id\": \"={{ $execution.id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"run_id\": \"{{ ($('Escalation created').item.json.body ?? $('Escalation created').item.json).run_id }}\", \"resume_url\": \"{{ $execution.resumeUrl }}\", \"execution_id\": \"{{ $execution.id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -63,13 +73,7 @@
         440,
         0
       ],
-      "name": "Register the resume URL",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Register the resume URL"
     },
     {
       "parameters": {
@@ -93,14 +97,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ $('Escalation created').item.json.body.escalation_id }}/remind",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/escalations/{{ ($('Escalation created').item.json.body ?? $('Escalation created').item.json).escalation_id }}/remind",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"run_id\": \"={{ $('Escalation created').item.json.body.run_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"run_id\": \"{{ ($('Escalation created').item.json.body ?? $('Escalation created').item.json).run_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -109,13 +121,7 @@
         880,
         0
       ],
-      "name": "Check whether it is still pending",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Check whether it is still pending"
     },
     {
       "parameters": {
@@ -222,5 +228,6 @@
   },
   "meta": {
     "description": "Notify a reviewer and wait on a webhook for the decision, reminding every ten minutes. The decision itself is always made in the dashboard."
-  }
+  },
+  "id": "saarthi-human-approval"
 }

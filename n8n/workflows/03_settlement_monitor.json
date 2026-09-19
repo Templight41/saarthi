@@ -43,10 +43,18 @@
         "sendBody": false,
         "specifyBody": "json",
         "jsonBody": "",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -55,13 +63,7 @@
         240,
         80
       ],
-      "name": "Find delayed settlements",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Find delayed settlements"
     },
     {
       "parameters": {
@@ -113,11 +115,19 @@
         "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/settlements/{{ $json.transaction_id }}/evaluate",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"run_id\": \"={{ $json.run_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"run_id\": \"{{ $json.run_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -126,13 +136,7 @@
         900,
         20
       ],
-      "name": "Evaluate and open a case",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Evaluate and open a case"
     }
   ],
   "connections": {
@@ -217,5 +221,6 @@
   },
   "meta": {
     "description": "Scan for overdue settlements nobody has complained about and open a case before they do."
-  }
+  },
+  "id": "saarthi-settlement-monitor"
 }

@@ -58,7 +58,13 @@ class PgVectorMemory:
             self._client = build_genai_client(self.settings)
         return self._client
 
-    async def embed(self, content: str, *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:
+    async def embed(
+        self,
+        content: str,
+        *,
+        task_type: str = "RETRIEVAL_DOCUMENT",
+        timeout: float | None = None,
+    ) -> list[float]:
         client = self._genai()
         response = await asyncio.wait_for(
             client.aio.models.embed_content(
@@ -69,7 +75,7 @@ class PgVectorMemory:
                     "output_dimensionality": self.settings.embedding_dimensions,
                 },
             ),
-            timeout=self.settings.memory_timeout_seconds,
+            timeout=timeout or self.settings.memory_timeout_seconds,
         )
         values = list(response.embeddings[0].values)
         return l2_normalise(values)
@@ -112,6 +118,14 @@ class PgVectorMemory:
             )
             await session.commit()
         self._ready = True
+
+    async def warm(self) -> None:
+        """Pay the auth and connection cost once, at startup."""
+        try:
+            await self.embed("warmup", task_type="RETRIEVAL_QUERY", timeout=45.0)
+            logger.info("Embedding client warm")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Embedding warmup failed (%s: %s)", type(exc).__name__, exc)
 
     async def search(
         self,
@@ -224,7 +238,7 @@ class PgVectorMemory:
             doc = await session.get(MemoryDocument, doc_id)
             if doc is None:
                 return
-            vector = await self.embed(f"{doc.title}\n{doc.body}")
+            vector = await self.embed(f"{doc.title}\n{doc.body}", timeout=45.0)
             literal = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
             from sqlalchemy import text as sql
 

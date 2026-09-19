@@ -314,7 +314,9 @@ class Supervisor:
                     transaction_id=case.transaction_id,
                     exclude_case_id=case.id,
                 ),
-                timeout=self.settings.memory_timeout_seconds,
+                # Slightly longer than the inner embed budget so the inner
+                # failure surfaces with its real cause.
+                timeout=self.settings.memory_timeout_seconds + 5,
             )
         except Exception as exc:  # noqa: BLE001 - memory must never block a case
             logger.warning("Memory search failed (%s); continuing without it", exc)

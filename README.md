@@ -43,33 +43,49 @@ the top bar.
 Requires Docker, Python 3.12 and Node with pnpm.
 
 ```bash
-make setup     # dependencies, .env
-make db-up     # PostgreSQL 17 with pgvector
-make backend   # http://localhost:8000/docs
-make frontend  # http://localhost:5173
+gcloud auth application-default login   # once
+make setup      # dependencies, .env
+make db-up      # PostgreSQL 17 with pgvector
+make n8n-up     # n8n on :5678, workflows imported and published
+make backend    # http://localhost:8000/docs
+make frontend   # http://localhost:5173
 ```
 
-No API keys are needed. Everything runs on deterministic local providers, and the dashboard shows
-which ones are live.
+Set `GOOGLE_CLOUD_PROJECT` in `.env` to your project. Nothing else is required: Vertex covers the
+model, the embeddings and speech with one set of credentials.
+
+### Why n8n runs on Node 24
+
+n8n's `isolated-vm` native module does not build on Node 25, and its Docker image is unreachable
+from networks that inspect TLS on large CDN transfers. `make n8n-up` therefore installs it under
+Homebrew's `node@24` and runs it directly. Nothing else in the project cares which Node is used.
 
 ---
 
-## What is real, and what is a fallback
+## Everything runs on real services
 
-Every external dependency has a real implementation, a local fallback, and an environment switch. The
-**fallback is the default**, so the demo never depends on venue wifi or a running container. The top
-bar shows which one is actually live, so the demo is never dishonest about it.
+There are no stand-ins in the running system. Each capability is backed by a real service, and the
+app **refuses to start** if a configuration would quietly substitute a deterministic one, naming
+exactly which. Finding that out mid-demo is worse than not starting.
 
-| Layer | Real | Fallback (default) | Switch |
-|---|---|---|---|
-| Language model | Gemini on Vertex AI or AI Studio, or Sarvam | rule-based provider | `LLM_PROVIDER` |
-| Memory | pgvector + Gemini embeddings | keyword index over the same documents | `MEMORY_PROVIDER` |
-| Workflows | n8n Wait and Schedule nodes | in-process asyncio loops | `WORKFLOW_ENGINE` |
-| Speech to text | Sarvam, or faster-whisper | scripted transcripts | `VOICE_PROVIDER` |
-| Database | PostgreSQL | SQLite (tests only) | `DATABASE_URL` |
+| Layer | What actually runs |
+|---|---|
+| Language model | Gemini 3.5 Flash on **Vertex AI** |
+| Memory | **pgvector** similarity search over `gemini-embedding-001` vectors |
+| Workflows | **n8n**, calling back into the API |
+| Speech to text | **`gemini-3.5-transcribe-preview`** on Vertex AI |
+| Database | **PostgreSQL 17** with pgvector |
 
-A real provider that fails at runtime degrades to the fallback and writes an `LLM_FALLBACK` event, so
-the degradation shows up on the timeline instead of silently changing behaviour.
+The dashboard header carries an **all live** badge that turns amber the moment any layer is not what
+it claims, and flags n8n as offline rather than green if it is configured but unreachable.
+
+`ALLOW_SIMULATED=true` re-enables the deterministic providers. The test suite is the one place that
+uses them, opted into explicitly, because a suite that called a live model would be slow, flaky and
+billable.
+
+What stays simulated, deliberately: **the merchant's payment systems**. The ledger, settlements and
+refund gateway are the demo's subject matter, not a stand-in for anything Saarthi does, and the
+specification rules out real payment integrations. No real money moves.
 
 ### Using Gemini on Vertex AI
 

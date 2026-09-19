@@ -61,7 +61,12 @@ async def settlement_check(
 ) -> dict:
     if not payload.case_id:
         raise HTTPException(400, "case_id is required")
-    result = await steps.scheduled_refund_check(session, run_id, payload.case_id, check=1)
+    # n8n loops this node, so the count comes from the run rather than the call.
+    from ..database.models import WorkflowRun
+
+    run = await session.get(WorkflowRun, run_id)
+    check = (run.attempts if run else 0) + 1
+    result = await steps.scheduled_refund_check(session, run_id, payload.case_id, check=check)
     await session.commit()
     return result
 

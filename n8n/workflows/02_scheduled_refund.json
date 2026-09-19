@@ -20,7 +20,7 @@
     {
       "parameters": {
         "resume": "timeInterval",
-        "amount": "={{ $('Scheduled refund requested').item.json.body.wait_seconds }}",
+        "amount": "={{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).wait_seconds }}",
         "unit": "seconds"
       },
       "type": "n8n-nodes-base.wait",
@@ -35,14 +35,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ $('Scheduled refund requested').item.json.body.run_id }}/settlement",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).run_id }}/settlement",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"case_id\": \"={{ $('Scheduled refund requested').item.json.body.case_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"case_id\": \"{{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).case_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -51,13 +59,7 @@
         440,
         0
       ],
-      "name": "Check settlement",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Check settlement"
     },
     {
       "parameters": {
@@ -91,14 +93,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ $('Scheduled refund requested').item.json.body.run_id }}/complete",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).run_id }}/complete",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"case_id\": \"={{ $('Scheduled refund requested').item.json.body.case_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"case_id\": \"{{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).case_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -107,13 +117,7 @@
         880,
         -120
       ],
-      "name": "Stand down the refund",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Stand down the refund"
     },
     {
       "parameters": {
@@ -147,14 +151,22 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ $('Scheduled refund requested').item.json.body.run_id }}/execute",
+        "url": "={{ $env.SAARTHI_API_BASE }}/api/internal/workflows/{{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).run_id }}/execute",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"case_id\": \"={{ $('Scheduled refund requested').item.json.body.case_id }}\"}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={\"case_id\": \"{{ ($('Scheduled refund requested').item.json.body ?? $('Scheduled refund requested').item.json).case_id }}\"}",
         "options": {
           "timeout": 15000
+        },
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Saarthi-Internal-Token",
+              "value": "={{ $env.SAARTHI_INTERNAL_TOKEN }}"
+            }
+          ]
         }
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -163,13 +175,7 @@
         1100,
         40
       ],
-      "name": "Execute the refund",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "saarthi-internal",
-          "name": "Saarthi Internal Token"
-        }
-      }
+      "name": "Execute the refund"
     }
   ],
   "connections": {
@@ -249,5 +255,6 @@
   },
   "meta": {
     "description": "Wait, check settlement, stand the refund down if it settles, execute it if the deadline passes. Every decision is made by the backend; n8n only does the waiting."
-  }
+  },
+  "id": "saarthi-scheduled-refund"
 }
