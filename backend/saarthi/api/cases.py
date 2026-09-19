@@ -308,6 +308,7 @@ async def get_case_context(
         "disputes": ctx.disputes,
         "refunds": ctx.refunds,
         "merchant_history": ctx.merchant_history,
+        "patterns": ctx.patterns,
         "policy": case.policy_decisions[-1] if case.policy_decisions else None,
         "memory": memory,
     }

@@ -204,6 +204,42 @@ All fixtures are deterministic, and `make demo-reset` restores them exactly, dow
 
 ---
 
+## Memory
+
+Three layers, and the distinction between them is the whole point.
+
+**What is true now** is PostgreSQL, and only PostgreSQL. **What does this remind us of** is
+pgvector over a corpus of resolved cases — advisory, and labelled as such everywhere it appears.
+**What keeps happening** is `memory/patterns.py`, which answers the question neither of the others
+can: is this the merchant's third settlement delay this month?
+
+Patterns are **counted, not inferred**. Each detector returns the rows it found — a timestamp, a
+transaction id, a case you can open — and one shared rule turns a list of occurrences into a
+pattern with a severity and a threshold. No model is consulted, because a model asked to count
+produces a plausible number rather than a true one, and a merchant told "this is your third delay"
+deserves that to be a fact.
+
+Six detectors: settlement delays, payment-failure bursts, refund failures, repeated escalations,
+case-volume spikes, and notification mismatches (which finds nothing until Phase 4's Soundbox
+events exist — the correct answer, rather than a gap to wire up later).
+
+Two details worth knowing. A burst is measured by **density, not total**: five failures across a
+month is a business, five in ten minutes is a broken terminal, so only the tightest window counts.
+A volume spike is measured against **the merchant's own baseline**, because a busy merchant with
+steady volume is not an anomaly and a quiet one doubling is.
+
+Patterns are computed on demand rather than stored. A patterns table would be a second place where
+a number about the ledger lives, and it would go stale the moment a settlement completed.
+
+They stay **advisory**. A pattern reaches the diagnosing model as context and the dashboard as
+history. It is never an input to the policy engine — how often this has happened before does not
+change what Saarthi is allowed to do about it today — and a test walks `policy/` to keep that true.
+
+`GET /api/merchants/{id}/profile` is the merchant's operational history, every number traceable to
+rows.
+
+---
+
 ## Voice
 
 Saarthi listens and answers aloud, and both directions lean on Sarvam because this is Indian

@@ -122,6 +122,17 @@ the tool registry, logged, and **never executed**.
 
 ### Memory
 
+Three layers. Postgres is what is true now; pgvector is what this reminds us of; `memory/patterns.py`
+is what keeps happening. Patterns are **counted from rows, never inferred by a model** — each
+detector returns the occurrences it found and one shared rule in `_build` turns a count into a
+severity, so "would this have fired?" is answerable by reading `RULES`.
+
+Patterns are computed on demand, not stored: a patterns table would be a second place where a
+number about the ledger lives, and it would go stale the moment a settlement completed.
+
+They are advisory like everything else historical. `policy/` must never import them, and
+`test_patterns.py::test_the_policy_engine_cannot_see_patterns` walks the package to enforce it.
+
 Advisory context only. It runs its **own session** (`PgVectorMemory.session_factory`) — an earlier
 version shared the caller's, and a failed vector query aborted the agent's transaction, after which
 rolling back expired its ORM objects and the next statement died outside the greenlet context.

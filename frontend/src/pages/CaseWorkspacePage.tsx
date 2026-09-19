@@ -13,6 +13,7 @@ import {
   CurrentActionCard,
   DiagnosisCard,
   MemoryPanel,
+  PatternsPanel,
   PolicyCard,
   TransactionContextPanel,
   WorkflowRunsCard,
@@ -83,6 +84,7 @@ export function CaseWorkspacePage() {
 
         <div className="space-y-4">
           {ctx && <TransactionContextPanel ctx={ctx} />}
+          {ctx && <PatternsPanel ctx={ctx} />}
           {ctx && <MemoryPanel ctx={ctx} />}
           <WorkflowRunsCard runs={runs ?? []} />
         </div>

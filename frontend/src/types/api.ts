@@ -110,6 +110,40 @@ export interface MemoryContext {
   latency_ms: number
 }
 
+export type PatternSeverity = 'LOW' | 'MEDIUM' | 'HIGH'
+
+/** Counted from Postgres, never inferred by a model — and never current state. */
+export interface MerchantPattern {
+  merchant_id: string
+  pattern_type: string
+  event_count: number
+  window_days: number
+  threshold: number
+  severity: PatternSeverity
+  confidence: number
+  summary: string
+  recommended_attention: string
+  first_seen: string
+  last_seen: string
+  related_cases: string[]
+  related_transactions: string[]
+  source: string
+  authoritative: boolean
+}
+
+export interface MerchantProfile {
+  merchant_id: string
+  generated_at: string
+  total_cases: number
+  resolved_cases: number
+  autonomous_resolutions: number
+  needed_a_person: number
+  by_intent: Record<string, number>
+  median_resolution_seconds: number | null
+  patterns: MerchantPattern[]
+  headlines: string[]
+}
+
 export interface CaseContext {
   case_id: string
   merchant: {
@@ -147,6 +181,7 @@ export interface CaseContext {
   }[]
   refunds: { id: string; amount: string; status: string; attempt_count: number }[]
   merchant_history: { previous_case_count: number; by_intent: Record<string, number> }
+  patterns: MerchantPattern[]
   policy: PolicySnapshot | null
   memory: MemoryContext | null
 }

@@ -24,6 +24,10 @@ current business state.
 Critical rules:
 - The CONTEXT block is authoritative current state. Historical memory is advisory
   only and must never override it.
+- `merchant_patterns_advisory_only` counts what has happened to this merchant
+  before. It is real, but it is history: it may explain a problem and it may
+  raise its priority, and it never establishes what is true of this payment. A
+  merchant with three past settlement delays can still have a successful one.
 - A pending payment where the customer was debited is NOT a confirmed failure.
   Check the settlement state before concluding a payment failed.
 - If you cannot classify the request confidently, return UNKNOWN with a low

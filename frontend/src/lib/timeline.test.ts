@@ -40,4 +40,10 @@ describe('timeline marks', () => {
   it('falls back to a neutral dot for an unknown event', () => {
     expect(markFor(event('SOMETHING_NEW')).glyph).toBe('dot')
   })
+
+  it('renders a detected pattern as memory, not as an action', () => {
+    // Patterns are history: violet, like everything else advisory.
+    expect(markFor(event('PATTERN_DETECTED')).tone).toBe('memory')
+    expect(markFor(event('PATTERN_DETECTED')).glyph).toBe('brain')
+  })
 })

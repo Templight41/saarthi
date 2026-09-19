@@ -1,4 +1,4 @@
-import { Brain, ShieldCheck } from 'lucide-react'
+import { Brain, Repeat, ShieldCheck } from 'lucide-react'
 import type { Case, CaseContext, WorkflowRun } from '../../types/api'
 import { duration, humanise, rupees } from '../../lib/format'
 import { Chip, Empty, Field, MicroLabel, Mono, Panel, decisionTone, riskTone } from '../ui'
@@ -224,6 +224,55 @@ export function TransactionContextPanel({ ctx }: { ctx: CaseContext }) {
           </div>
         </Field>
       </div>
+    </Panel>
+  )
+}
+
+export function PatternsPanel({ ctx }: { ctx: CaseContext }) {
+  const patterns = ctx.patterns ?? []
+  if (patterns.length === 0) return null
+
+  return (
+    <Panel
+      title={
+        <span className="flex items-center gap-1.5">
+          <Repeat size={12} className="text-memory" />
+          What keeps happening
+        </span>
+      }
+      action={<span className="mono text-[10px] text-ink-faint">counted from the ledger</span>}
+    >
+      {/* Same violet treatment as memory, because this is history too. The
+          difference from the panel above is how it was arrived at: these
+          numbers were counted, not matched. */}
+      <div className="mb-2 rounded-sm border border-memory/25 bg-memory/5 px-2 py-1">
+        <span className="mono text-[9px] font-semibold tracking-wider text-memory uppercase">
+          Merchant history — not current state
+        </span>
+      </div>
+
+      <ul className="space-y-2.5">
+        {patterns.map((pattern) => (
+          <li key={pattern.pattern_type} className="border-l-2 border-memory/30 pl-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <Mono className="text-[11px] text-memory">{humanise(pattern.pattern_type)}</Mono>
+              <Chip tone={pattern.severity === 'HIGH' ? 'danger' : 'memory'}>
+                {pattern.severity.toLowerCase()}
+              </Chip>
+            </div>
+            <div className="text-[12px] text-ink">{pattern.summary}</div>
+            <div className="text-[11px] leading-snug text-ink-dim">
+              {pattern.recommended_attention}
+            </div>
+            <Mono className="text-[10px] text-ink-faint">
+              {pattern.event_count} of {pattern.threshold} needed
+              {pattern.related_transactions.length > 0 &&
+                ` · ${pattern.related_transactions.slice(0, 3).join(', ')}`}
+              {pattern.related_transactions.length > 3 && ' …'}
+            </Mono>
+          </li>
+        ))}
+      </ul>
     </Panel>
   )
 }

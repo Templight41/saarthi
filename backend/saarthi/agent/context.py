@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import Case
+from ..memory.patterns import detect_patterns
 from ..services import ledger_service, ops_service, refund_service
 
 
@@ -29,6 +30,7 @@ class CaseContext:
     tickets: list[dict] = field(default_factory=list)
     merchant_history: dict[str, Any] = field(default_factory=dict)
     memory: dict[str, Any] | None = None
+    patterns: list[dict] = field(default_factory=list)
 
     def for_prompt(self) -> dict:
         """The subset handed to the model. Memory is explicitly marked advisory."""
@@ -42,6 +44,9 @@ class CaseContext:
             "payment_history": self.payment_history,
             "merchant_history": self.merchant_history,
             "memory_advisory_only": (self.memory or {}).get("similar_cases", []),
+            # Counted from Postgres, but still history: it says what keeps
+            # happening to this merchant, never what is true of this payment.
+            "merchant_patterns_advisory_only": self.patterns,
         }
 
 
@@ -67,6 +72,7 @@ async def build_context(
     for prior in history:
         if prior.intent:
             by_intent[prior.intent] = by_intent.get(prior.intent, 0) + 1
+    ctx.patterns = [p.as_dict() for p in await detect_patterns(session, case.merchant_id)]
     ctx.merchant_history = {
         "previous_case_count": len(history),
         "by_intent": by_intent,

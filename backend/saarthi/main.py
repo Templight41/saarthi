@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
@@ -120,6 +120,18 @@ def create_app() -> FastAPI:
         runtime: SaarthiRuntime = Depends(get_runtime),
     ) -> dict:
         return await compute_metrics(session, runtime.settings)
+
+    @misc.get("/api/merchants/{merchant_id}/profile")
+    async def merchant_profile_endpoint(
+        merchant_id: str, session: AsyncSession = Depends(get_session)
+    ) -> dict:
+        """Operational history, counted from Postgres. Never current payment state."""
+        from .memory.patterns import merchant_profile
+
+        merchant = await session.get(Merchant, merchant_id)
+        if merchant is None:
+            raise HTTPException(404, f"Merchant {merchant_id} not found")
+        return await merchant_profile(session, merchant_id)
 
     @misc.get("/api/merchants")
     async def merchants(session: AsyncSession = Depends(get_session)) -> dict:

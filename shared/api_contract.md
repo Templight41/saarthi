@@ -81,7 +81,8 @@ A second decision on a settled escalation returns **409**.
 |---|---|
 | `GET /api/metrics` | Every metric, each with `value`, `unit`, `numerator`, `denominator` and a `simulated` flag |
 | `GET /api/health` | The live provider for each layer |
-| `GET /api/merchants` | Merchant list with refund authority |
+| `GET /api/merchants` | Merchant list with refund authority and language |
+| `GET /api/merchants/{id}/profile` | Operational history and recurring patterns, counted from Postgres |
 
 ## Voice
 

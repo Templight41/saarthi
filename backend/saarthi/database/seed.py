@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import utcnow
@@ -28,6 +28,7 @@ from .enums import (
     MessageDirection,
     MessageStatus,
     PaymentStatus,
+    RefundStatus,
     Resolution,
     RiskLevel,
     SettlementStatus,
@@ -150,6 +151,7 @@ def _historical_case(
     days_ago: int,
     duration_seconds: int,
     now: datetime,
+    settlement_window_minutes: int = 120,
 ) -> tuple[Transaction, Settlement, Case, list[AgentEvent], Action, Message]:
     created = now - timedelta(days=days_ago)
     resolved = created + timedelta(seconds=duration_seconds)
@@ -169,7 +171,10 @@ def _historical_case(
         id=f"STL-{txn_id[-4:]}",
         transaction_id=txn_id,
         status=SettlementStatus.COMPLETED,
-        expected_at=created + timedelta(hours=2),
+        # A case that was diagnosed as a settlement delay should have a
+        # settlement that actually missed its window, or the fixtures disagree
+        # with themselves and the pattern engine is right to ignore them.
+        expected_at=created + timedelta(minutes=settlement_window_minutes),
         completed_at=resolved,
         updated_at=resolved,
     )
@@ -401,7 +406,9 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
         id="STL-2004",
         transaction_id="TXN_NORMAL_SUCCESS",
         status=SettlementStatus.COMPLETED,
-        expected_at=now - timedelta(hours=3),
+        # Comfortably inside its window: this is the transaction where nothing
+        # went wrong, so nothing about it should read as late.
+        expected_at=now - timedelta(hours=1, minutes=30),
         completed_at=now - timedelta(hours=2),
     )
     session.add_all([txn_d, stl_d])
@@ -442,6 +449,7 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
             days_ago=9,
             duration_seconds=6420,
             now=now,
+            settlement_window_minutes=30,
         ),
         _historical_case(
             case_id="CASE-16842",
@@ -455,6 +463,7 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
             days_ago=21,
             duration_seconds=3480,
             now=now,
+            settlement_window_minutes=30,
         ),
         _historical_case(
             case_id="CASE-16210",
@@ -468,6 +477,21 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
             days_ago=40,
             duration_seconds=11100,
             now=now,
+            settlement_window_minutes=30,
+        ),
+        _historical_case(
+            case_id="CASE-17788",
+            txn_id="TXN17788",
+            merchant_id="M1001",
+            amount="3400.00",
+            intent="SETTLEMENT_DELAY",
+            root_cause="SETTLEMENT_DELAY",
+            summary="Yesterday's settlement is still not in my account.",
+            outcome="Settlement completed after 2h 12m; merchant informed.",
+            days_ago=4,
+            duration_seconds=7920,
+            now=now,
+            settlement_window_minutes=30,
         ),
         _historical_case(
             case_id="CASE-15977",
@@ -483,6 +507,67 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
             now=now,
         ),
     ]
+    # ---- Operational history with no case attached ------------------------
+    # Not every problem becomes a support case. These rows exist so the pattern
+    # engine has something true to count that the case list does not already
+    # show: a terminal that dropped five payments in six minutes, and refunds
+    # that keep needing a second attempt.
+    burst_at = now - timedelta(days=3)
+    for index in range(5):
+        session.add(
+            Transaction(
+                id=f"TXN17{600 + index}",
+                merchant_id="M1002",
+                amount=Decimal("450.00"),
+                payment_status=PaymentStatus.FAILED,
+                customer_debited=False,
+                customer_reference=f"CUST-71{index}0",
+                description="Counter sale",
+                created_at=burst_at + timedelta(minutes=index + index // 2),
+                updated_at=burst_at + timedelta(minutes=index + index // 2),
+            )
+        )
+    await session.flush()
+
+    for index, (suffix, days, status, attempts) in enumerate(
+        [
+            ("17610", 3, RefundStatus.FAILED, 1),
+            ("17611", 2, RefundStatus.COMPLETED, 2),
+        ]
+    ):
+        created = now - timedelta(days=days)
+        txn_id = f"TXN{suffix}"
+        # A refund needs a payment that actually succeeded to refund.
+        session.add(
+            Transaction(
+                id=txn_id,
+                merchant_id="M1002",
+                amount=Decimal("450.00"),
+                payment_status=PaymentStatus.SUCCESS,
+                customer_debited=True,
+                customer_reference=f"CUST-{suffix}",
+                description="Counter sale",
+                created_at=created - timedelta(hours=2),
+                updated_at=created,
+            )
+        )
+        await session.flush()
+        session.add(
+            Refund(
+                id=f"RFD-H{index}",
+                transaction_id=txn_id,
+                amount=Decimal("450.00"),
+                status=status,
+                reason="Customer cancelled",
+                attempt_count=attempts,
+                idempotency_key=f"refund:history:{txn_id}:450.00",
+                completed_at=created if status == RefundStatus.COMPLETED else None,
+                created_at=created,
+                updated_at=created,
+            )
+        )
+    await session.flush()
+
     for txn, stl, case, events, action, message in historical:
         session.add(txn)
         await session.flush()
@@ -496,7 +581,9 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
     return {
         "seed_version": SEED_VERSION,
         "merchants": 2,
-        "transactions": 9,
+        "transactions": await session.scalar(
+            select(func.count()).select_from(Transaction)
+        ),
         "historical_cases": len(historical),
         "policies": 6,
         "seeded_at": now.astimezone(UTC).isoformat(),

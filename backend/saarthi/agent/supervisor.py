@@ -300,7 +300,33 @@ class Supervisor:
 
         memory_result = await self._search_memory(session, case)
         ctx.context = await build_context(session, case, memory=memory_result)
+        await self._record_patterns(session, case, ctx.context)
         return StepOutcome(CaseStatus.DIAGNOSING, "reasoning about the root cause")
+
+    async def _record_patterns(self, session, case: Case, context: CaseContext) -> None:
+        """Put what keeps happening to this merchant into the audit trail.
+
+        One event per case, not one per pattern: this is a single observation
+        about the merchant, and the payload carries the counts a reader would
+        otherwise have to take on trust. It changes nothing on its own — the
+        policy engine never sees it.
+        """
+        if not context.patterns:
+            return
+        headline = context.patterns[0]
+        await record_event(
+            session,
+            case,
+            EventType.PATTERN_DETECTED,
+            message=(
+                f"{headline['summary']} — {len(context.patterns)} recurring pattern(s) "
+                f"for {case.merchant_id}"
+                if len(context.patterns) > 1
+                else f"{headline['summary']} for {case.merchant_id}"
+            ),
+            status=EventStatus.INFO,
+            result={"patterns": context.patterns},
+        )
 
     async def _search_memory(self, session, case: Case) -> dict | None:
         if self.memory is None:

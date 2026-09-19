@@ -4,6 +4,7 @@ import type {
   Escalation,
   Health,
   Message,
+  MerchantProfile,
   Metrics,
   ProactiveAlert,
   Scenario,
@@ -57,6 +58,8 @@ export const api = {
     request<{ messages: Message[] }>(`/api/cases/${id}/messages`).then((r) => r.messages),
   workflows: (id: string) =>
     request<{ runs: WorkflowRun[] }>(`/api/cases/${id}/workflows`).then((r) => r.runs),
+
+  merchantProfile: (id: string) => request<MerchantProfile>(`/api/merchants/${id}/profile`),
 
   escalations: (status?: string) =>
     request<{ escalations: Escalation[] }>(
