@@ -223,11 +223,13 @@ export interface WorkflowRun {
 
 export interface Health {
   status: string
-  llm: { provider: string; simulated: boolean }
+  llm: { provider: string; simulated: boolean; backend?: string | null }
   memory: { provider: string }
   workflows: { engine: string; reachable?: boolean }
+  voice: { provider: string; model: string }
   database: string
-  voice: string
+  simulated: { llm: boolean; memory: boolean; workflows: boolean; voice: boolean }
+  all_real: boolean
 }
 
 export interface Scenario {

@@ -8,22 +8,41 @@ import { Chip, Mono } from '../ui'
 function ProviderBadges() {
   const { data } = useHealth()
   if (!data) return null
+
+  // n8n is configured but unreachable: the run would quietly continue
+  // in-process, so say so rather than showing a green badge.
+  const n8nDown = data.workflows.engine === 'n8n' && data.workflows.reachable === false
+
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <Chip tone={data.llm.simulated ? 'neutral' : 'verified'} title="Language model in use">
-        llm {data.llm.provider}
+      <Chip
+        tone={data.all_real && !n8nDown ? 'verified' : 'acting'}
+        title={
+          data.all_real
+            ? 'Every provider is a real service'
+            : 'At least one provider is a deterministic stand-in'
+        }
+      >
+        {data.all_real && !n8nDown ? 'all live' : 'partly simulated'}
+      </Chip>
+      <Chip tone={data.simulated.llm ? 'acting' : 'verified'} title="Language model">
+        {data.llm.provider}
+      </Chip>
+      <Chip tone={data.simulated.memory ? 'acting' : 'memory'} title="Semantic memory">
+        {data.memory.provider}
       </Chip>
       <Chip
-        tone={data.memory.provider === 'local_index' ? 'neutral' : 'memory'}
-        title="Semantic memory backend"
+        tone={n8nDown ? 'danger' : data.simulated.workflows ? 'acting' : 'verified'}
+        title={n8nDown ? 'n8n is configured but not reachable' : 'Workflow engine'}
       >
-        memory {data.memory.provider.replace('_', ' ')}
+        {data.workflows.engine}
+        {n8nDown ? ' offline' : ''}
       </Chip>
-      <Chip tone={data.workflows.engine === 'n8n' ? 'memory' : 'neutral'} title="Workflow engine">
-        wf {data.workflows.engine}
+      <Chip tone={data.simulated.voice ? 'acting' : 'verified'} title={data.voice.model}>
+        voice {data.voice.provider}
       </Chip>
       <Chip tone="neutral" title="Database">
-        db {data.database}
+        {data.database}
       </Chip>
     </div>
   )
