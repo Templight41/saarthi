@@ -3,6 +3,8 @@ import type {
   CaseContext,
   Escalation,
   Health,
+  LedgerTransaction,
+  NewTransaction,
   Message,
   MerchantProfile,
   Metrics,
@@ -111,6 +113,18 @@ export const api = {
   failSettlement: (txn: string) =>
     request(`/api/simulation/settlement/${txn}/fail`, { method: 'POST' }),
   runProactive: () => request('/api/simulation/proactive', { method: 'POST' }),
+
+  transactions: (merchantId?: string) =>
+    request<{ transactions: LedgerTransaction[] }>(
+      `/api/simulation/transactions${merchantId ? `?merchant_id=${merchantId}` : ''}`,
+    ).then((r) => r.transactions),
+  createTransaction: (body: NewTransaction) =>
+    request<{ transaction_id: string; settlement_id: string | null }>(
+      '/api/simulation/transactions',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  deleteTransaction: (id: string) =>
+    request(`/api/simulation/transactions/${id}`, { method: 'DELETE' }),
 
   /**
    * A sent message never changes, so its audio is a plain cacheable URL that an

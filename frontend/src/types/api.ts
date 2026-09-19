@@ -356,3 +356,31 @@ export interface TranscribeResult {
   latency_ms: number
   simulated: boolean
 }
+
+export interface LedgerTransaction {
+  id: string
+  merchant_id: string
+  amount: string
+  currency: string
+  payment_status: string
+  payment_method: string
+  customer_debited: boolean
+  customer_reference: string
+  description: string
+  refunded_amount: string
+  created_at: string
+  settlement: { id: string; status: string; expected_at: string | null } | null
+}
+
+/** Everything the hand-made fixture form can set. */
+export interface NewTransaction {
+  merchant_id?: string
+  amount?: string
+  payment_status?: string
+  payment_method?: string
+  customer_debited?: boolean
+  description?: string
+  transaction_id?: string | null
+  settlement_status?: string | null
+  announce_on_soundbox?: boolean
+}

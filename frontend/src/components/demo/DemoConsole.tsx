@@ -4,6 +4,7 @@ import { CheckCircle2, PlayCircle, RotateCcw, Siren, XCircle, Zap } from 'lucide
 import { api } from '../../services/api'
 import { useRefreshAll, useScenarios } from '../../hooks/queries'
 import { Button, Chip, MicroLabel, Mono } from '../ui'
+import { TransactionLab } from './TransactionLab'
 
 /**
  * How a presenter actually drives the demo. Every control is deterministic:
@@ -128,6 +129,10 @@ export function DemoConsole({ onDone }: { onDone?: () => void }) {
             <Zap size={12} className="text-acting" /> Fail the next refund once
           </span>
         </Button>
+      </div>
+
+      <div className="border-t border-line pt-4">
+        <TransactionLab />
       </div>
 
       <div className="border-t border-line pt-4">
