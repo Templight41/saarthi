@@ -12,6 +12,7 @@ import { StageStrip } from '../components/case/StageStrip'
 import {
   CurrentActionCard,
   DiagnosisCard,
+  AnnouncementsPanel,
   MemoryPanel,
   PatternsPanel,
   PolicyCard,
@@ -84,6 +85,7 @@ export function CaseWorkspacePage() {
 
         <div className="space-y-4">
           {ctx && <TransactionContextPanel ctx={ctx} />}
+          {ctx && <AnnouncementsPanel ctx={ctx} />}
           {ctx && <PatternsPanel ctx={ctx} />}
           {ctx && <MemoryPanel ctx={ctx} />}
           <WorkflowRunsCard runs={runs ?? []} />

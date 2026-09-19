@@ -8,6 +8,7 @@ import type {
   Metrics,
   ProactiveAlert,
   Scenario,
+  ScenarioStatus,
   AgentEvent,
   TranscribeResult,
   WorkflowRun,
@@ -84,7 +85,17 @@ export const api = {
   alerts: () =>
     request<{ alerts: ProactiveAlert[] }>('/api/simulation/alerts').then((r) => r.alerts),
   scenarios: () =>
-    request<{ scenarios: Scenario[] }>('/api/simulation/scenarios').then((r) => r.scenarios),
+    request<{ scenarios: Scenario[] }>('/api/scenarios').then((r) => r.scenarios),
+  scenario: (id: string) => request<Scenario>(`/api/scenarios/${id}`),
+  resetScenario: (id: string) =>
+    request<{ scenario: string }>(`/api/scenarios/${id}/reset`, { method: 'POST' }),
+  /** Reset, arm and start in one call. Returns the case it opened, if any. */
+  startScenario: (id: string) =>
+    request<{ scenario: string; case_id: string | null; trigger: string }>(
+      `/api/scenarios/${id}/run`,
+      { method: 'POST' },
+    ),
+  scenarioStatus: (id: string) => request<ScenarioStatus>(`/api/scenarios/${id}/status`),
   reset: () => request('/api/simulation/reset', { method: 'POST' }),
   runScenario: (key: string) =>
     request<Scenario & { suggested_message: string }>(`/api/simulation/scenario/${key}`, {

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .api import cases, escalations, internal, simulation, voice
+from .api import cases, escalations, internal, scenarios, simulation, voice
 from .api.deps import get_runtime, get_session
 from .config import get_settings
 from .database.database import init_db
@@ -101,6 +101,7 @@ def create_app() -> FastAPI:
 
     app.include_router(cases.router)
     app.include_router(escalations.router)
+    app.include_router(scenarios.router)
     app.include_router(simulation.router)
     app.include_router(voice.router)
     app.include_router(internal.router)

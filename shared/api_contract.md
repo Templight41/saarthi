@@ -101,6 +101,20 @@ takes an id and re-reads the row, so every byte of audio has an audited message 
 | `502` | The speech provider failed |
 | `503` | `TTS_PROVIDER=off` |
 
+## Scenario Lab
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/scenarios` | The five canonical scenarios, each with its initial state, expected behaviour, checkpoints and — the field to read first — `autonomy_boundary` |
+| `GET /api/scenarios/{id}` | One of them |
+| `POST /api/scenarios/{id}/reset` | Fixtures to ground state and the scenario armed, but not started |
+| `POST /api/scenarios/{id}/run` | Reset, arm and start. Returns the case it opened, or `null` for the proactive scenario, where the monitor opens its own |
+| `GET /api/scenarios/{id}/status` | What actually happened. Checkpoints are ticked off the audit trail and the case row, never from prose |
+
+Ids are `settlement_delay`, `refund_failure`, `high_value_dispute`, `soundbox_mismatch` and
+`proactive_anomaly`. `A`, `B` and `C` still resolve to the first three; the two newer scenarios
+have no letter, so familiar muscle memory cannot silently run something else.
+
 ## Simulation (demo controls)
 
 | Endpoint | Effect |

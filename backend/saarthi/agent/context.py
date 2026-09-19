@@ -8,13 +8,18 @@ all the way to the UI: memory informs, the database decides.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..database.database import utcnow
 from ..database.models import Case
 from ..memory.patterns import detect_patterns
 from ..services import ledger_service, notification_service, ops_service, refund_service
+
+#: How far back a device announcement still counts as something to answer for.
+NOTIFICATION_WINDOW_HOURS = 24
 
 
 @dataclass
@@ -78,8 +83,16 @@ async def build_context(
         if prior.intent:
             by_intent[prior.intent] = by_intent.get(prior.intent, 0) + 1
     ctx.patterns = [p.as_dict() for p in await detect_patterns(session, case.merchant_id)]
+    # Bounded: a phantom announcement forces a human (see clamp_to_facts), so
+    # an unbounded history would make one old device fault require a person on
+    # every case for that merchant forever.
     ctx.notifications = [
-        r.as_dict() for r in await notification_service.reconcile_recent(session, case.merchant_id)
+        r.as_dict()
+        for r in await notification_service.reconcile_recent(
+            session,
+            case.merchant_id,
+            since=utcnow() - timedelta(hours=NOTIFICATION_WINDOW_HOURS),
+        )
     ]
     ctx.merchant_history = {
         "previous_case_count": len(history),

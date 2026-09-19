@@ -181,6 +181,7 @@ export interface CaseContext {
   }[]
   refunds: { id: string; amount: string; status: string; attempt_count: number }[]
   merchant_history: { previous_case_count: number; by_intent: Record<string, number> }
+  notifications?: Reconciliation[]
   patterns: MerchantPattern[]
   policy: PolicySnapshot | null
   memory: MemoryContext | null
@@ -281,13 +282,70 @@ export interface Health {
   all_real: boolean
 }
 
+export interface DemoStep {
+  label: string
+  detail: string
+  control: string | null
+}
+
+export interface ScenarioCheckpoint {
+  label: string
+  event_type: string | null
+  case_status: string | null
+}
+
 export interface Scenario {
-  key: string
-  title: string
+  id: string
+  name: string
+  description: string
+  capability: string
   merchant_id: string
-  transaction_id: string
-  message: string
-  expectation: string
+  transaction_id: string | null
+  /** Null for the proactive scenario: nobody says anything. */
+  message: string | null
+  trigger: 'MERCHANT_MESSAGE' | 'MONITOR'
+  aliases: string[]
+  initial_state: string[]
+  expected_behaviour: string[]
+  expected_outcome: string
+  autonomy_boundary: string
+  checkpoints: ScenarioCheckpoint[]
+  demo_steps: DemoStep[]
+}
+
+export interface ScenarioStatus {
+  scenario: string
+  armed: boolean
+  case_id: string | null
+  case_status?: CaseStatus
+  origin?: CaseOrigin
+  resolution?: Resolution | null
+  requires_human?: boolean
+  human_required_by_policy?: boolean
+  phase: 'NOT_STARTED' | 'RUNNING' | 'WAITING' | 'AWAITING_HUMAN' | 'RESOLVED'
+  checkpoints: { label: string; reached: boolean }[]
+  reached?: number
+  total?: number
+}
+
+/** What a device told the merchant, already checked against the ledger. */
+export interface Reconciliation {
+  notification_id: string
+  reference: string
+  announced_amount: string | null
+  announced_at: string
+  outcome:
+    | 'MATCHED_SUCCESS'
+    | 'MATCHED_PENDING'
+    | 'MATCHED_FAILED'
+    | 'AMOUNT_MISMATCH'
+    | 'NO_AUTHORITATIVE_RECORD'
+  transaction_id: string | null
+  ledger_amount: string | null
+  payment_status: string | null
+  explanation: string
+  confirmed_by_ledger: boolean
+  authoritative: false
 }
 
 export interface TranscribeResult {

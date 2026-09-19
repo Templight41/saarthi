@@ -31,6 +31,7 @@ _REFUND = re.compile(r"\brefund\b", re.IGNORECASE)
 _STATUS_Q = re.compile(r"\b(status|where|when|how long|update)\b", re.IGNORECASE)
 _CANCEL = re.compile(r"\b(cancel|cancelled|returned|return)\b", re.IGNORECASE)
 _SETTLEMENT = re.compile(r"\b(settle|settlement|payout|not received)\b", re.IGNORECASE)
+_DEVICE = re.compile(r"\b(soundbox|sound box|speaker|announced|notification|sms)\b", re.IGNORECASE)
 
 
 def _extract_amount(text: str) -> Decimal | None:
@@ -97,7 +98,29 @@ class MockProvider(LLMProvider):
                 evidence=["merchant requested a human"],
             )
 
-        # 2. Subjective product-quality dispute.
+        # 2. The merchant is quoting a device, not the dashboard. Classify it as
+        # such and let the clamp decide against the ledger: the stand-in has no
+        # business guessing whether the money is real.
+        if _DEVICE.search(message):
+            announcements = ctx.get("device_announcements_evidence_only") or []
+            unconfirmed = [n for n in announcements if not n.get("confirmed_by_ledger")]
+            return Diagnosis(
+                intent=Intent.NOTIFICATION_MISMATCH,
+                transaction_id=txn_id,
+                root_cause=RootCause.UNKNOWN,
+                confidence=0.80,
+                risk=RiskLevel.MEDIUM,
+                summary=(
+                    "The merchant's device announced a payment that their dashboard does not "
+                    "show. What the ledger says decides this, not the announcement."
+                ),
+                evidence=[
+                    f"{len(announcements)} device announcements in the last hour",
+                    f"{len(unconfirmed)} of them are not confirmed by the ledger",
+                ],
+            )
+
+        # 3. Subjective product-quality dispute.
         if open_quality_dispute or _QUALITY.search(message):
             requested = amount
             if requested is None and disputes:

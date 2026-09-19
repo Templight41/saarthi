@@ -3,6 +3,7 @@ import { Radar } from 'lucide-react'
 import { useAlerts, useCases, useMetrics } from '../hooks/queries'
 import { clock, duration, humanise, metricDisplay } from '../lib/format'
 import { Chip, Empty, MicroLabel, Mono, Panel, statusTone } from '../components/ui'
+import { MerchantSupportBar } from '../components/chat/MerchantSupportBar'
 import type { MetricValue } from '../types/api'
 
 function MetricTile({ metric }: { metric: MetricValue }) {
@@ -31,6 +32,8 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-5">
+      <MerchantSupportBar />
+
       {alerts && alerts.length > 0 && (
         <div className="panel border-acting/40 bg-acting/5">
           {alerts.map((alert) => (

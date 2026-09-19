@@ -19,7 +19,7 @@ from ..memory.knowledge import seed_knowledge
 from ..runtime import SaarthiRuntime
 from ..services import ledger_service
 from ..simulation.failure_injection import simulation_state
-from ..simulation.scenarios import SCENARIOS
+from ..simulation.scenarios import SCENARIOS, resolve
 from .deps import get_runtime, get_session
 
 router = APIRouter(prefix="/api/simulation", tags=["simulation"])
@@ -47,17 +47,21 @@ async def reset(
 
 @router.get("/scenarios")
 async def list_scenarios() -> dict:
+    """The older shape, kept so the demo console does not break.
+
+    `/api/scenarios` is the real catalogue; this is a projection of it.
+    """
     return {
         "scenarios": [
             {
-                "key": key,
-                "title": scenario.title,
+                "key": scenario.id,
+                "title": scenario.name,
                 "merchant_id": scenario.merchant_id,
                 "transaction_id": scenario.transaction_id,
                 "message": scenario.message,
-                "expectation": scenario.expectation,
+                "expectation": scenario.expected_outcome,
             }
-            for key, scenario in SCENARIOS.items()
+            for scenario in SCENARIOS.values()
         ]
     }
 
@@ -68,8 +72,7 @@ async def run_scenario(
     session: AsyncSession = Depends(get_session),
     runtime: SaarthiRuntime = Depends(get_runtime),
 ) -> dict:
-    key = name.upper() if name.upper() in SCENARIOS else name.lower()
-    scenario = SCENARIOS.get(key)
+    scenario = resolve(name)
     if scenario is None:
         raise HTTPException(404, f"Unknown scenario {name}")
 
@@ -80,17 +83,17 @@ async def run_scenario(
 
     await seed_all(session)
     await seed_knowledge(session, runtime.memory)
-    scenario.arm(simulation_state, session)
-    simulation_state.active_scenario = key
+    await scenario.arm(simulation_state, session)
+    simulation_state.active_scenario = scenario.id
     await session.commit()
 
     return {
-        "scenario": key,
-        "title": scenario.title,
+        "scenario": scenario.id,
+        "title": scenario.name,
         "merchant_id": scenario.merchant_id,
         "transaction_id": scenario.transaction_id,
         "suggested_message": scenario.message,
-        "expectation": scenario.expectation,
+        "expectation": scenario.expected_outcome,
         "simulation": simulation_state.as_dict(),
     }
 

@@ -84,6 +84,20 @@ class BaseWorkflowEngine:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    async def drain(self, timeout: float = 30.0) -> None:
+        """Wait for work already in flight, without cancelling it.
+
+        `shutdown` cancels; this lets the monitor finish. The Scenario Lab
+        needs it so that "run the proactive scenario" can hand back a case id
+        rather than a promise, and so a test can assert on the result instead
+        of sleeping and hoping.
+        """
+        while self._tasks:
+            pending = list(self._tasks)
+            done, _ = await asyncio.wait(pending, timeout=timeout)
+            if not done:
+                return
+
     async def shutdown(self) -> None:
         for task in list(self._tasks):
             task.cancel()

@@ -31,19 +31,23 @@ export function DemoConsole({ onDone }: { onDone?: () => void }) {
     }
   }
 
-  async function runScenario(key: string) {
-    setBusy(key)
+  /**
+   * One call. The lab resets the fixtures, arms the scenario and starts it the
+   * way it would really start — as a merchant message, or as nothing at all
+   * for the proactive one, where the monitor is left to notice by itself.
+   */
+  async function runScenario(id: string) {
+    setBusy(id)
     setNote(null)
     try {
-      const scenario = await api.runScenario(key)
-      const created = await api.createCase({
-        message: scenario.suggested_message,
-        merchant_id: scenario.merchant_id,
-        transaction_id: scenario.transaction_id,
-      })
+      const started = await api.startScenario(id)
       refresh()
-      onDone?.()
-      navigate(`/cases/${created.id}`)
+      if (started.case_id) {
+        onDone?.()
+        navigate(`/cases/${started.case_id}`)
+      } else {
+        setNote('The monitor ran and found nothing due.')
+      }
     } catch (error) {
       setNote(error instanceof Error ? error.message : 'Scenario failed to start')
     } finally {
@@ -56,22 +60,32 @@ export function DemoConsole({ onDone }: { onDone?: () => void }) {
       <div>
         <MicroLabel>Run a scenario</MicroLabel>
         <div className="space-y-2">
-          {scenarios?.map((s) => (
+          {scenarios?.map((s, index) => (
             <button
-              key={s.key}
+              key={s.id}
               type="button"
               disabled={busy !== null}
-              onClick={() => runScenario(s.key)}
+              onClick={() => runScenario(s.id)}
               className="w-full rounded-sm border border-line bg-panel-raised px-3 py-2.5 text-left transition-colors hover:border-line-bright disabled:opacity-50"
             >
               <div className="flex items-center gap-2">
-                <PlayCircle size={13} className="text-acting" />
+                {s.trigger === 'MONITOR' ? (
+                  <Siren size={13} className="text-acting" />
+                ) : (
+                  <PlayCircle size={13} className="text-acting" />
+                )}
                 <span className="text-[13px] font-medium text-ink">
-                  {s.key}. {s.title}
+                  {index + 1}. {s.name}
                 </span>
-                <Mono className="ml-auto text-[10px] text-ink-faint">{s.transaction_id}</Mono>
+                <Mono className="ml-auto text-[10px] text-ink-faint">
+                  {s.transaction_id ?? s.merchant_id}
+                </Mono>
               </div>
-              <p className="mt-1 text-[11px] leading-snug text-ink-dim">{s.expectation}</p>
+              <p className="mt-1 text-[11px] leading-snug text-ink-dim">{s.capability}</p>
+              {/* The most useful line on the card: where it stops. */}
+              <p className="mt-1 text-[11px] leading-snug text-ink-faint">
+                {s.autonomy_boundary}
+              </p>
             </button>
           ))}
         </div>
@@ -114,23 +128,6 @@ export function DemoConsole({ onDone }: { onDone?: () => void }) {
             <Zap size={12} className="text-acting" /> Fail the next refund once
           </span>
         </Button>
-      </div>
-
-      <div>
-        <MicroLabel>Proactive operation</MicroLabel>
-        <Button
-          onClick={() =>
-            run('proactive', api.runProactive, 'Monitor ran; a case was opened if one was due')
-          }
-          disabled={busy !== null}
-        >
-          <span className="flex items-center gap-1.5">
-            <Siren size={12} className="text-acting" /> Detect the overdue settlement
-          </span>
-        </Button>
-        <p className="mt-1.5 text-[11px] leading-snug text-ink-faint">
-          Opens a case for <Mono>TXN19931</Mono> with no merchant complaint at all.
-        </p>
       </div>
 
       <div className="border-t border-line pt-4">

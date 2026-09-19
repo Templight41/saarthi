@@ -68,8 +68,52 @@ def clamp_to_facts(diagnosis: Diagnosis, ctx: CaseContext, *, registry=None) -> 
     debited = bool(txn.get("customer_debited"))
     settlement_status = settlement.get("status")
 
-    # A debited-but-pending payment is a settlement delay, never a confirmed failure.
-    if payment_status == "PAYMENT_PENDING" and debited and settlement_status == "PENDING":
+    # An announcement the ledger cannot confirm is never a payment.
+    #
+    # Deliberately *not* conditional on what the model called this case. Live
+    # models classify the same Soundbox complaint as a settlement delay about
+    # whichever real pending transaction happens to be nearby, which silently
+    # drops the announcement that has no payment behind it at all. A phantom
+    # payment is a fact about the ledger, so the ledger decides, and the model
+    # is told afterwards.
+    phantom_announcements = [
+        n
+        for n in ctx.notifications
+        if n.get("outcome") == "NO_AUTHORITATIVE_RECORD"
+        # One the identified transaction accounts for is not a phantom.
+        and n.get("reference") != txn.get("id")
+    ]
+    if phantom_announcements:
+        if diagnosis.root_cause != RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT:
+            diagnosis.root_cause = RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT
+            clamped.append("root_cause")
+        if diagnosis.intent != Intent.NOTIFICATION_MISMATCH:
+            diagnosis.intent = Intent.NOTIFICATION_MISMATCH
+            clamped.append("intent")
+        # Nothing autonomous is safe here: every option begins by assuming the
+        # payment exists, which is precisely what is in doubt.
+        if not diagnosis.requires_human:
+            diagnosis.requires_human = True
+            clamped.append("requires_human")
+    elif (
+        diagnosis.intent == Intent.NOTIFICATION_MISMATCH
+        and ctx.notifications
+        and all(n.get("confirmed_by_ledger") for n in ctx.notifications)
+    ):
+        # Every announcement checks out. The discrepancy was the dashboard,
+        # not the money, and there is nothing to do about the money.
+        if diagnosis.root_cause != RootCause.NO_ISSUE_FOUND:
+            diagnosis.root_cause = RootCause.NO_ISSUE_FOUND
+            clamped.append("root_cause")
+
+    # A debited-but-pending payment is a settlement delay, never a confirmed
+    # failure — unless a phantom announcement means that is not the question.
+    if (
+        payment_status == "PAYMENT_PENDING"
+        and debited
+        and settlement_status in {"PENDING", "OVERDUE"}
+        and not phantom_announcements
+    ):
         if diagnosis.root_cause != RootCause.SETTLEMENT_DELAY:
             diagnosis.root_cause = RootCause.SETTLEMENT_DELAY
             clamped.append("root_cause")
@@ -100,36 +144,6 @@ def clamp_to_facts(diagnosis: Diagnosis, ctx: CaseContext, *, registry=None) -> 
         if diagnosis.requested_amount is None and open_quality[0].get("requested_amount"):
             diagnosis.requested_amount = Decimal(str(open_quality[0]["requested_amount"]))
             clamped.append("requested_amount")
-
-    # An announcement the ledger cannot confirm is never a payment. The model
-    # is drawn towards believing the merchant's device, because the merchant
-    # believes it; the ledger is what decides.
-    unconfirmed = [n for n in ctx.notifications if not n.get("confirmed_by_ledger")]
-    orphaned = [
-        n for n in unconfirmed if n.get("outcome") == "NO_AUTHORITATIVE_RECORD"
-    ]
-    if unconfirmed and not txn.get("id") and orphaned:
-        if diagnosis.root_cause != RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT:
-            diagnosis.root_cause = RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT
-            clamped.append("root_cause")
-        if diagnosis.intent != Intent.NOTIFICATION_MISMATCH:
-            diagnosis.intent = Intent.NOTIFICATION_MISMATCH
-            clamped.append("intent")
-        # There is no transaction to act on, so there is nothing an agent can
-        # safely do on its own. Inventing one would be the worst outcome here.
-        if not diagnosis.requires_human:
-            diagnosis.requires_human = True
-            clamped.append("requires_human")
-    elif unconfirmed and diagnosis.intent == Intent.NOTIFICATION_MISMATCH:
-        # The announcement resolved to a real transaction: whatever is wrong
-        # with it, the root cause is that transaction's state, not the device.
-        matched = txn.get("payment_status")
-        if matched == "PAYMENT_PENDING" and diagnosis.root_cause != RootCause.SETTLEMENT_DELAY:
-            diagnosis.root_cause = RootCause.SETTLEMENT_DELAY
-            clamped.append("root_cause")
-        elif matched == "FAILED" and diagnosis.root_cause != RootCause.PAYMENT_FAILED_CONFIRMED:
-            diagnosis.root_cause = RootCause.PAYMENT_FAILED_CONFIRMED
-            clamped.append("root_cause")
 
     # A requested amount over the merchant's authority is at least medium risk.
     limit = Decimal(str(ctx.merchant.get("autonomous_refund_limit", "0")))

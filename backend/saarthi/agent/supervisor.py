@@ -797,22 +797,41 @@ class Supervisor:
                 "transaction": ctx.context.transaction,
                 "settlement": ctx.context.settlement,
                 "disputes": ctx.context.disputes,
+                "device_announcements": ctx.context.notifications,
                 "diagnosis_summary": ctx.diagnosis.summary if ctx.diagnosis else "",
             },
             amount=amount,
         )
 
-        await self._notify(
-            session,
-            case,
-            ctx,
-            stage="ESCALATED",
-            facts={
-                "transaction_id": case.transaction_id,
-                "amount": str(amount) if amount else None,
-                "reason_text": _humanise(reason.value),
-            },
-        )
+        facts = {
+            "transaction_id": case.transaction_id,
+            "amount": str(amount) if amount else None,
+            "reason_text": _humanise(reason.value),
+        }
+        if reason is EscalationReason.NO_AUTHORITATIVE_RECORD:
+            # The transaction that got identified is not what this case is
+            # about. Naming it here would tell the merchant their real pending
+            # payment does not exist, which is both false and alarming.
+            phantom = next(
+                (
+                    n
+                    for n in ctx.context.notifications
+                    if n.get("outcome") == "NO_AUTHORITATIVE_RECORD"
+                ),
+                {},
+            )
+            facts = {
+                "transaction_id": None,
+                "announced_reference": phantom.get("reference"),
+                "announced_amount": phantom.get("announced_amount"),
+                "announced_at": phantom.get("announced_at"),
+                "amount": None,
+                "reason_text": (
+                    "a payment your device announced does not appear in our records at all"
+                ),
+            }
+
+        await self._notify(session, case, ctx, stage="ESCALATED", facts=facts)
         if self.workflows is not None:
             await self._start_human_approval(session, case, escalation)
 

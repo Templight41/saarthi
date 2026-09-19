@@ -67,6 +67,7 @@ Each module answers exactly one question, and that separation is the point:
 | Did it work? | `verification/verifier.py` |
 | What if it failed? | `recovery/manager.py` |
 | When does a human decide? | `escalation/manager.py` |
+| What was the merchant *told*? | `services/notification_service.py` — evidence, never fact |
 | What happens over time? | `workflows/` and n8n |
 
 `runtime.py` is the composition root; everything hangs off `SaarthiRuntime` so a test can swap one
@@ -98,6 +99,11 @@ collaborator.
 - **The spoken language comes from the message, not the merchant.** The template fallback writes
   English whoever it stands in for, so reading the language off the merchant would have bulbul read
   English words in a Hindi voice.
+- **A notification is evidence; the ledger is the fact.** A Soundbox announcement lives in
+  `notification_events`, whose `reference` is plain text rather than a foreign key — so a device
+  can announce a payment the ledger has never heard of, which is exactly the case Saarthi must not
+  resolve by inventing a transaction. `notification_service.reconcile` is the only crossing, it
+  re-reads authoritative state, and it never writes.
 - **Fact clamping** (`agent/diagnosis.py`) overrides the model wherever the database disagrees, and
   records every correction in `clamped_fields`. Live models do get this wrong: Gemini 2.5 Flash
   misdiagnosed Scenario A as a confirmed payment failure.
@@ -197,6 +203,24 @@ something calls a thin endpoint in `api/internal.py` that invokes the **same** s
 - Cast parameters compared only against NULL, or Postgres cannot infer their type.
 - `gemini-embedding-001` below 3072 dims does not normalise; we L2-normalise ourselves.
 - Embed in batches. Sequential per-document embedding blocked startup for minutes.
+
+## The Scenario Lab
+
+`simulation/scenarios.py` holds exactly five scenarios, and they are **data**: the agent has no
+idea which one is running, and `tests/test_scenario_lab.py` walks `agent/`, `policy/`,
+`verification/`, `recovery/` and `escalation/` to keep it that way. Arming a scenario shapes the
+world — which fixtures exist, whether the refund gateway fails — never the reasoning.
+
+A scenario's checkpoints are satisfied by an **audit event or a case status**, never by parsing
+prose, so `GET /api/scenarios/{id}/status` is an observation rather than a claim. A scenario that
+quietly broke reports unticked checkpoints.
+
+Two of the five end with Saarthi stopping. That is the behaviour being demonstrated, and both carry
+`human_required_by_policy`, so they are excluded from the autonomy-rate denominator.
+
+`resolve()` accepts `A`/`B`/`C` for the three original scenarios. The two newer ones are
+addressable only by id, deliberately: a presenter typing `D` gets a 404 rather than a different
+scenario than the one they meant.
 
 ## Metrics
 

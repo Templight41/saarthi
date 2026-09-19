@@ -1,4 +1,4 @@
-import { Brain, Repeat, ShieldCheck } from 'lucide-react'
+import { Brain, Repeat, ShieldCheck, Volume2 } from 'lucide-react'
 import type { Case, CaseContext, WorkflowRun } from '../../types/api'
 import { duration, humanise, rupees } from '../../lib/format'
 import { Chip, Empty, Field, MicroLabel, Mono, Panel, decisionTone, riskTone } from '../ui'
@@ -224,6 +224,66 @@ export function TransactionContextPanel({ ctx }: { ctx: CaseContext }) {
           </div>
         </Field>
       </div>
+    </Panel>
+  )
+}
+
+const OUTCOME_LABEL: Record<string, string> = {
+  MATCHED_SUCCESS: 'confirmed',
+  MATCHED_PENDING: 'still pending',
+  MATCHED_FAILED: 'payment failed',
+  AMOUNT_MISMATCH: 'amount differs',
+  NO_AUTHORITATIVE_RECORD: 'no such payment',
+}
+
+/**
+ * What the merchant's devices announced, and what the ledger says about each.
+ *
+ * Deliberately not styled like the transaction panel. A Soundbox announcement
+ * is evidence at the same level as the merchant's own account of events, and
+ * the moment it looks like payment state someone will read it as one.
+ */
+export function AnnouncementsPanel({ ctx }: { ctx: CaseContext }) {
+  const announcements = ctx.notifications ?? []
+  if (announcements.length === 0) return null
+  const unconfirmed = announcements.filter((a) => !a.confirmed_by_ledger).length
+
+  return (
+    <Panel
+      title={
+        <span className="flex items-center gap-1.5">
+          <Volume2 size={12} className="text-memory" />
+          What the device announced
+        </span>
+      }
+      action={
+        <span className="mono text-[10px] text-ink-faint">
+          {unconfirmed} of {announcements.length} unconfirmed
+        </span>
+      }
+    >
+      <div className="mb-2 rounded-sm border border-memory/25 bg-memory/5 px-2 py-1">
+        <span className="mono text-[9px] font-semibold tracking-wider text-memory uppercase">
+          Evidence — the ledger decides
+        </span>
+      </div>
+
+      <ul className="space-y-2.5">
+        {announcements.map((a) => (
+          <li key={a.notification_id} className="border-l-2 border-memory/30 pl-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <Mono className="text-[11px] text-ink">
+                {a.reference || 'no reference'}
+                {a.announced_amount ? ` · ₹${a.announced_amount}` : ''}
+              </Mono>
+              <Chip tone={a.confirmed_by_ledger ? 'verified' : 'danger'}>
+                {OUTCOME_LABEL[a.outcome] ?? a.outcome.toLowerCase()}
+              </Chip>
+            </div>
+            <div className="text-[11px] leading-snug text-ink-dim">{a.explanation}</div>
+          </li>
+        ))}
+      </ul>
     </Panel>
   )
 }
