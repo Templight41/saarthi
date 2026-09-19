@@ -41,6 +41,12 @@ function ProviderBadges() {
       <Chip tone={data.simulated.voice ? 'acting' : 'verified'} title={data.voice.model}>
         voice {data.voice.provider}
       </Chip>
+      <Chip
+        tone={data.simulated.tts ? 'acting' : data.tts.enabled ? 'verified' : 'neutral'}
+        title={data.tts.enabled ? `${data.tts.model} · ${data.tts.speaker}` : 'Speech output is off'}
+      >
+        speech {data.tts.provider}
+      </Chip>
       <Chip tone="neutral" title="Database">
         {data.database}
       </Chip>

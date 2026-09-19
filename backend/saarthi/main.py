@@ -82,6 +82,17 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # allow_headers governs the request; reading a custom header off a
+        # response needs this. Without it the voice metadata is invisible to
+        # the browser as soon as the dashboard stops proxying through Vite.
+        expose_headers=[
+            "X-Saarthi-Voice-Provider",
+            "X-Saarthi-Voice-Model",
+            "X-Saarthi-Voice-Language",
+            "X-Saarthi-Voice-Latency-Ms",
+            "X-Saarthi-Voice-Simulated",
+            "X-Saarthi-Voice-Cache",
+        ],
     )
 
     @app.exception_handler(EnterpriseAPIError)
@@ -120,6 +131,7 @@ def create_app() -> FastAPI:
                     "name": m.name,
                     "risk_level": m.risk_level.value,
                     "autonomous_refund_limit": str(m.autonomous_refund_limit),
+                    "language": m.language,
                 }
                 for m in rows
             ]

@@ -45,6 +45,27 @@ class SaarthiRuntime:
     supervisor: Supervisor
     runner: CaseRunner
     workflows: object | None = None
+    # Speech engines are built on first use, never in build(): loading a local
+    # model is expensive and speech is optional, so it must not be able to slow
+    # or break startup. Declared fields rather than stashed attributes so a
+    # test can inject a failing one.
+    transcriber: object | None = None
+    synthesizer: object | None = None
+
+    def get_transcriber(self):
+        if self.transcriber is None:
+            from .voice.transcriber import build_transcriber
+
+            self.transcriber = build_transcriber(self.settings)
+        return self.transcriber
+
+    def get_synthesizer(self):
+        """None when speech output is switched off — an absence, not a failure."""
+        if self.synthesizer is None and self.settings.tts_provider != "off":
+            from .voice.synthesizer import build_synthesizer
+
+            self.synthesizer = build_synthesizer(self.settings)
+        return self.synthesizer
 
     @classmethod
     def build(
@@ -115,24 +136,42 @@ class SaarthiRuntime:
 
     def health(self) -> dict:
         from .llm.factory import provider_info
+        from .voice.synthesizer import resolve_synthesizer
+        from .voice.transcriber import resolve_transcriber
 
         llm = provider_info(self.llm)
         memory_name = getattr(self.memory, "name", "unknown")
         workflow_name = getattr(self.workflows, "name", "none")
-        voice_name = self.settings.voice_provider
+
+        # Report what would actually run, not what was configured: VOICE_PROVIDER=auto
+        # with nothing configured resolves to the scripted transcriber, and saying
+        # otherwise would make `all_real` a lie.
+        stt_provider, stt_model = resolve_transcriber(self.settings)
+        stt_provider = getattr(self.transcriber, "name", None) or stt_provider
+        tts_provider, tts_model = resolve_synthesizer(self.settings)
 
         simulated = {
             "llm": bool(llm.get("simulated")),
             "memory": memory_name == "local_index",
             "workflows": workflow_name == "local",
-            "voice": voice_name == "mock",
+            "voice": stt_provider == "mock",
+            # "off" is a feature switched off, not a stand-in standing in.
+            "tts": tts_provider == "mock",
         }
         return {
             "status": "ok",
             "llm": {**llm, "backend": getattr(self.llm, "backend", None)},
             "memory": {"provider": memory_name},
             "workflows": {"engine": workflow_name},
-            "voice": {"provider": voice_name, "model": self.settings.gemini_transcribe_model},
+            "voice": {"provider": stt_provider, "model": stt_model},
+            "tts": {
+                "provider": tts_provider,
+                "model": tts_model,
+                "speaker": self.settings.sarvam_tts_speaker,
+                "language": self.settings.speech_language,
+                "enabled": tts_provider != "off",
+                "characters_synthesised": getattr(self.synthesizer, "characters_synthesised", 0),
+            },
             "database": "postgres" if not self.settings.is_sqlite else "sqlite",
             "simulated": simulated,
             "all_real": not any(simulated.values()),

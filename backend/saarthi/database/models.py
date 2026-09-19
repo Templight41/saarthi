@@ -56,6 +56,9 @@ class Merchant(Base):
     risk_level: Mapped[RiskLevel] = mapped_column(portable_enum(RiskLevel), default=RiskLevel.LOW)
     autonomous_refund_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("5000.00"))
     currency: Mapped[str] = mapped_column(String(8), default="INR")
+    # The language Saarthi writes and speaks to this merchant in. One value for
+    # both, so what the merchant reads and what they hear are the same words.
+    language: Mapped[str] = mapped_column(String(8), default="en-IN")
     meta: Mapped[dict] = mapped_column("metadata", JSONType, default=dict)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow)
 

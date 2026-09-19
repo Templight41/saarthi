@@ -88,6 +88,18 @@ A second decision on a settled escalation returns **409**.
 `POST /api/voice/transcribe` — multipart with `audio` and an optional `hint`. Returns a transcript
 only. The caller then posts that text to the ordinary message endpoint.
 
+`GET /api/voice/messages/{message_id}/speech` — `audio/wav` for a message Saarthi has already sent,
+with `X-Saarthi-Voice-{Provider,Model,Language,Latency-Ms,Simulated,Cache}` and an immutable
+`Cache-Control`. There is deliberately **no** endpoint that synthesises arbitrary text: the route
+takes an id and re-reads the row, so every byte of audio has an audited message behind it.
+
+| Status | Meaning |
+|---|---|
+| `404` | Unknown, inbound, unsent, or not stamped by the claims guard — all "not speakable" |
+| `422` | Longer than `TTS_MAX_CHARACTERS`; never truncated, because half a sentence can invert it |
+| `502` | The speech provider failed |
+| `503` | `TTS_PROVIDER=off` |
+
 ## Simulation (demo controls)
 
 | Endpoint | Effect |

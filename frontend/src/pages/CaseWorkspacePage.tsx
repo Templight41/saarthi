@@ -75,6 +75,7 @@ export function CaseWorkspacePage() {
             <ChatPanel
               caseId={caseId}
               messages={messages ?? []}
+              status={kase.status}
               disabled={kase.owner === 'HUMAN'}
             />
           )}

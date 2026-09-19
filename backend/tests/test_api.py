@@ -3,54 +3,10 @@
 from __future__ import annotations
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 
-from saarthi.database.seed import seed_all
-from saarthi.memory.knowledge import seed_knowledge
-from saarthi.runtime import SaarthiRuntime
 from saarthi.simulation.failure_injection import simulation_state
 
 pytestmark = pytest.mark.asyncio
-
-
-@pytest_asyncio.fixture
-async def client(settings, session_factory):
-    from fastapi import FastAPI
-
-    from saarthi.api import cases, escalations, simulation, voice
-    from saarthi.api.deps import get_session
-    from saarthi.main import create_app
-
-    runtime = SaarthiRuntime.build(settings, session_factory=session_factory)
-    async with session_factory() as session:
-        await seed_all(session)
-        await seed_knowledge(session, runtime.memory)
-        await session.commit()
-
-    app = FastAPI()
-    app.state.runtime = runtime
-    app.include_router(cases.router)
-    app.include_router(escalations.router)
-    app.include_router(simulation.router)
-    app.include_router(voice.router)
-
-    from saarthi.metrics.service import compute_metrics
-
-    @app.get("/api/metrics")
-    async def metrics():
-        async with session_factory() as session:
-            return await compute_metrics(session, settings)
-
-    @app.get("/api/health")
-    async def health():
-        return runtime.health()
-
-    _ = create_app, get_session
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        c.runtime = runtime
-        yield c
 
 
 async def test_create_case_returns_snapshot(client):

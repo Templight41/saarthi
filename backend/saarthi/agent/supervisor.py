@@ -913,9 +913,12 @@ class Supervisor:
         tool_ctx = ToolContext(session=session, case=case, simulation=self.simulation, runtime=self)
         from .messaging import draft_for_stage
 
-        body, claims = await draft_for_stage(tool_ctx, stage, facts)
+        body, claims, language = await draft_for_stage(tool_ctx, stage, facts)
         message = await ops_service.draft_message(
-            session, case_id=case.id, content=body, meta={"stage": stage, "claims": claims}
+            session,
+            case_id=case.id,
+            content=body,
+            meta={"stage": stage, "claims": claims, "language": language},
         )
         await record_event(
             session,

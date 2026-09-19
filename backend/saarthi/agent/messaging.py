@@ -4,6 +4,12 @@ The specification is explicit: never tell a merchant a refund has completed
 unless backend verification confirms it. That rule cannot live in a prompt,
 because a prompt is advisory. It lives here, where an unverifiable claim is
 rejected and the message is redrafted from a template.
+
+Each merchant is written to in their own language, and the language the draft
+actually came out in is returned with it. That matters because the template
+fallback below is English whatever the merchant speaks: recording the language
+of the *message* rather than of the merchant is what keeps the spoken audio and
+the text on screen the same words.
 """
 
 from __future__ import annotations
@@ -34,16 +40,43 @@ Rules:
 # Claims that require independent backend confirmation before they may be made.
 VERIFIABLE_CLAIMS = {"REFUND_COMPLETED", "SETTLEMENT_COMPLETED"}
 
+# The template fallback in llm/mock.py is written in English only.
+TEMPLATE_LANGUAGE = "en-IN"
 
-async def draft_for_stage(ctx: ToolContext, stage: str, facts: dict) -> tuple[str, list[str]]:
+LANGUAGE_NAMES = {
+    "en-IN": "Indian English",
+    "hi-IN": "Hindi, in Devanagari script",
+    "bn-IN": "Bengali",
+    "gu-IN": "Gujarati",
+    "kn-IN": "Kannada",
+    "ml-IN": "Malayalam",
+    "mr-IN": "Marathi",
+    "od-IN": "Odia",
+    "pa-IN": "Punjabi",
+    "ta-IN": "Tamil",
+    "te-IN": "Telugu",
+}
+
+
+async def draft_for_stage(
+    ctx: ToolContext, stage: str, facts: dict
+) -> tuple[str, list[str], str]:
+    """Returns the body, the claims it is allowed to make, and its language."""
     runtime = ctx.runtime
     provider = getattr(runtime, "llm", None) or _FALLBACK
+    language = await _merchant_language(ctx)
+    # The template engine writes English whoever it is standing in for, so a
+    # simulated provider means an English body no matter what the merchant
+    # speaks. Recording the merchant's language here would make the audio and
+    # the text disagree.
+    if getattr(provider, "simulated", False):
+        language = TEMPLATE_LANGUAGE
 
-    context = {"stage": stage, "facts": facts}
+    context = {"stage": stage, "facts": facts, "language": language}
     try:
         draft = await provider.complete_json(
-            system=SYSTEM_PROMPT,
-            user=_user_prompt(stage, facts),
+            system=_system_prompt(language),
+            user=_user_prompt(stage, facts, language),
             schema=MessageDraft,
             context=context,
         )
@@ -52,6 +85,7 @@ async def draft_for_stage(ctx: ToolContext, stage: str, facts: dict) -> tuple[st
         draft = await _FALLBACK.complete_json(
             system=SYSTEM_PROMPT, user="", schema=MessageDraft, context=context
         )
+        language = TEMPLATE_LANGUAGE
 
     allowed, rejected = await _verify_claims(ctx, draft.claims, facts)
     if rejected:
@@ -62,8 +96,26 @@ async def draft_for_stage(ctx: ToolContext, stage: str, facts: dict) -> tuple[st
             schema=MessageDraft,
             context={"stage": _downgrade_stage(stage), "facts": facts},
         )
-        return safe.body, safe.claims
-    return draft.body, allowed
+        return safe.body, safe.claims, TEMPLATE_LANGUAGE
+    return draft.body, allowed, language
+
+
+async def _merchant_language(ctx: ToolContext) -> str:
+    try:
+        merchant = await ledger_service.get_merchant(ctx.session, ctx.case.merchant_id)
+    except Exception:  # noqa: BLE001
+        return TEMPLATE_LANGUAGE
+    return merchant.language or TEMPLATE_LANGUAGE
+
+
+def _system_prompt(language: str) -> str:
+    if language == TEMPLATE_LANGUAGE:
+        return SYSTEM_PROMPT
+    name = LANGUAGE_NAMES.get(language, language)
+    return (
+        f"{SYSTEM_PROMPT}- Write the message in {name}. Keep ₹ amounts and "
+        "transaction ids exactly as given, in Latin script.\n"
+    )
 
 
 def _downgrade_stage(stage: str) -> str:
@@ -71,10 +123,11 @@ def _downgrade_stage(stage: str) -> str:
     return "INTERIM" if stage in {"REFUNDED", "SETTLED"} else stage
 
 
-def _user_prompt(stage: str, facts: dict) -> str:
+def _user_prompt(stage: str, facts: dict, language: str) -> str:
     return (
         f"Write the merchant message for stage {stage}.\n"
         f"Only these facts are true: {facts}\n"
+        f"Write it in {LANGUAGE_NAMES.get(language, language)}.\n"
         "Return JSON matching the schema, listing in `claims` only what the facts support."
     )
 

@@ -750,9 +750,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-voice = [
-    { name = "sarvamai" },
-]
 whisper = [
     { name = "faster-whisper" },
 ]
@@ -777,11 +774,10 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "pydantic-settings", specifier = "==2.15.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "sarvamai", marker = "extra == 'voice'", specifier = "==0.1.33" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = "==2.0.54" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.38" },
 ]
-provides-extras = ["voice", "whisper"]
+provides-extras = ["whisper"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -789,22 +785,6 @@ dev = [
     { name = "pytest", specifier = ">=8.4" },
     { name = "pytest-asyncio", specifier = "==1.4.0" },
     { name = "ruff", specifier = ">=0.14" },
-]
-
-[[package]]
-name = "sarvamai"
-version = "0.1.33"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pydantic-core" },
-    { name = "typing-extensions" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/31/a0/035275832112980433db056bb6714e756d2f2deb3a47491be61410213d1e/sarvamai-0.1.33.tar.gz", hash = "sha256:82a95ae57f0bfb5ca3af5fa37d3368d7a3d9de7572a5fe99df9a9a3ae17613a7", size = 192654, upload-time = "2026-09-09T15:57:43.73Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/7d/44ffd4f5a64471add7ab879fcc54b72020272a01740a463058d207093b77/sarvamai-0.1.33-py3-none-any.whl", hash = "sha256:4ef5d36763b189573e5e87f91a672fd34b0dae96657b2df8a88152e9b361562d", size = 400972, upload-time = "2026-09-09T15:57:42.563Z" },
 ]
 
 [[package]]

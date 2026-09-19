@@ -74,6 +74,7 @@ exactly which. Finding that out mid-demo is worse than not starting.
 | Memory | **pgvector** similarity search over `gemini-embedding-001` vectors |
 | Workflows | **n8n**, calling back into the API |
 | Speech to text | **`gemini-3.5-transcribe-preview`** on Vertex AI |
+| Text to speech | **`bulbul:v3`** on Sarvam |
 | Database | **PostgreSQL 17** with pgvector |
 
 The dashboard header carries an **all live** badge that turns amber the moment any layer is not what
@@ -205,15 +206,44 @@ All fixtures are deterministic, and `make demo-reset` restores them exactly, dow
 
 ## Voice
 
-Sarvam is preferred for speech, because this is Indian merchant support. On the one independent
-benchmark available, its word error rate on Indian English was 34.3 against Whisper large-v3's 46.8,
-and on Hindi 39.0 against 71.7. It also has a code-mix mode, which is how these merchants actually
-speak. `make setup-voice` adds faster-whisper for offline use; without either, a scripted transcriber
-keeps the demo alive.
+Saarthi listens and answers aloud, and both directions lean on Sarvam because this is Indian
+merchant support. On the one independent benchmark available, Sarvam's word error rate on Indian
+English was 34.3 against Whisper large-v3's 46.8, and on Hindi 39.0 against 71.7. It also has a
+code-mix mode, which is how these merchants actually speak. `make setup-voice` adds faster-whisper
+for offline use; without either, a scripted transcriber keeps the demo alive.
 
-The transcribe endpoint returns **only a transcript**. The browser then posts that text to the
-ordinary message endpoint, so there is exactly one agent pipeline and it cannot tell speech from
-typing.
+**In.** The transcribe endpoint returns **only a transcript**. The browser then posts that text to
+the ordinary message endpoint, so there is exactly one agent pipeline and it cannot tell speech from
+typing. A test asserts that the same sentence sent as `CHAT` and as `VOICE` produces an identical
+decision path, with the case's origin the only difference.
+
+**Out.** `GET /api/voice/messages/{id}/speech` speaks a message Saarthi has **already sent**. It
+takes an id and re-reads the row — the same discipline the verifier follows — and that is why there
+is no endpoint that synthesises arbitrary text. Such an endpoint would let audio exist with no audit
+row behind it; as built, every byte the merchant hears corresponds to a persisted message the claims
+guard already checked against the ledger. A draft, an inbound message, or anything the guard never
+stamped is simply not speakable.
+
+Nothing under `agent/`, `tools/`, `workflows/` or `verification/` imports the synthesizer, and only
+the browser calls the route, so **a dead speech provider cannot fail a case**. That is structural
+rather than conventional, and `tests/test_voice.py` walks those packages to keep it so.
+
+Saarthi answers in the medium the merchant used: a spoken question gets a spoken reply, a typed one
+does not, and every message has a speaker button regardless.
+
+**Language.** Each merchant carries a language (`merchants.language`), and Saarthi both *writes* and
+speaks in it — so the audio and the text on screen are always the same words, never a translation of
+each other. The language is recorded on the message rather than read from the merchant at playback,
+because the template fallback writes English whatever the merchant speaks; taking it from the
+message is what keeps an English fallback from being read aloud in a Hindi voice. Urban Threads is
+served in English, Kaveri Foods in Hindi.
+
+`make check-voice` calls the live endpoint and prints what came back. It is worth running before a
+demo: bulbul:v2 was deprecated under us, and the failure was a flat 400 until the smoke test named
+it. Speakers are tied to the model, so v2's `anushka` is refused by v3.
+
+Set `TTS_PROVIDER=off` to run without speech output; the app refuses to start on `sarvam` with no
+key rather than quietly going silent.
 
 ---
 

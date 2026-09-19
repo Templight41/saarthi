@@ -67,6 +67,25 @@ class Settings(BaseSettings):
     voice_language: str = "en-IN"
     voice_max_seconds: int = 30
 
+    # --- Speech output ---
+    # One enum rather than a flag and a provider: "off" is a feature that is
+    # switched off, not a stand-in, and the difference matters to `all_real`.
+    tts_provider: Literal["off", "sarvam", "mock"] = "sarvam"
+    # v2 is deprecated and rejected by the live API. Speakers are tied to the
+    # model — v2's `anushka` is refused by v3, which has its own roster.
+    sarvam_tts_model: str = "bulbul:v3"
+    sarvam_tts_speaker: str = "shubh"
+    tts_language: str = ""
+    tts_sample_rate: Literal[8000, 16000, 22050, 24000] = 22050
+    # v3 accepts up to 2500, but a drafted message is capped at 900 by its
+    # schema, so this is a guardrail rather than a limit anyone meets.
+    tts_max_characters: int = 1500
+    # v3-only. Low, because a factual message about someone's money should not
+    # be read with a different intonation every time.
+    tts_temperature: float = 0.3
+    tts_pace: float = 1.0
+    tts_timeout_seconds: float = 25.0
+
     # --- Agent behaviour ---
     agent_run_mode: Literal["background", "inline"] = "background"
     agent_step_delay_seconds: float = 0.4
@@ -113,6 +132,12 @@ class Settings(BaseSettings):
             problems.append("VOICE_PROVIDER=gemini but Gemini is not configured")
         if self.voice_provider == "sarvam" and not self.sarvam_api_key:
             problems.append("VOICE_PROVIDER=sarvam but SARVAM_API_KEY is empty")
+        if self.tts_provider == "mock":
+            problems.append("TTS_PROVIDER=mock")
+        if self.tts_provider == "sarvam" and not self.sarvam_api_key:
+            problems.append(
+                "TTS_PROVIDER=sarvam but SARVAM_API_KEY is empty (set TTS_PROVIDER=off)"
+            )
         if self.workflow_engine == "local":
             problems.append("WORKFLOW_ENGINE=local (in-process loops, not n8n)")
         return problems
@@ -123,6 +148,11 @@ class Settings(BaseSettings):
         if self.gemini_backend == "vertex":
             return bool(self.google_cloud_project)
         return bool(self.gemini_api_key)
+
+    @property
+    def speech_language(self) -> str:
+        """The default spoken language, when a message does not name its own."""
+        return self.tts_language or self.voice_language
 
     @property
     def is_sqlite(self) -> bool:

@@ -87,6 +87,17 @@ collaborator.
   backstop.
 - **The claims guard** (`agent/messaging.py`) rejects any merchant message claiming a refund or
   settlement completed unless the ledger confirms it. This is enforced in code, not in a prompt.
+- **Speech output takes a message id and re-reads the row.** There is deliberately no endpoint that
+  synthesises arbitrary text, because that would let audio exist with no audit row behind it.
+  A draft, an inbound message, or anything without a claims-guard stamp in `message.meta["claims"]`
+  is not speakable. `ops_service.is_merchant_visible` is the single predicate, shared with the
+  messages endpoint.
+- **Nothing outside `api/voice.py` imports the synthesizer**, so a dead speech provider cannot fail
+  a case. `tests/test_voice.py::test_the_agent_never_reaches_for_the_synthesizer` walks `agent/`,
+  `tools/`, `workflows/`, `verification/`, `recovery/`, `escalation/` and `policy/` to keep it true.
+- **The spoken language comes from the message, not the merchant.** The template fallback writes
+  English whoever it stands in for, so reading the language off the merchant would have bulbul read
+  English words in a Hindi voice.
 - **Fact clamping** (`agent/diagnosis.py`) overrides the model wherever the database disagrees, and
   records every correction in `clamped_fields`. Live models do get this wrong: Gemini 2.5 Flash
   misdiagnosed Scenario A as a confirmed payment failure.
@@ -140,7 +151,33 @@ something calls a thin endpoint in `api/internal.py` that invokes the **same** s
 - `metadata` is reserved on `DeclarativeBase`, so audit metadata is the attribute `meta`.
 - Enums are non-native with name == value, and `TZDateTime` forces UTC because SQLite drops tzinfo.
 - IDs come from the `counters` table and reset with the seed, so the first case is always
-  `CASE-18293`. Tests and the demo depend on that.
+  `CASE-18293`. Tests and the demo depend on that. It also means an id alone does not identify a
+  message, which is why the speech cache is keyed on a hash of the content too.
+- There is no Alembic: `init_db` only runs `create_all`, so a new column needs `make db-reset`.
+- `Settings` reads `../.env`, so `tests/conftest.py` passes `_env_file=None`. Without it a developer
+  machine with a real key builds real providers in the test suite — `allow_simulated` *permits*
+  stand-ins, it does not force them.
+
+**Voice**
+- Sarvam TTS returns `audios` as a list of base64 **chunks**. Taking `[0]` truncates what Saarthi
+  says mid-sentence. `decode_audios` decodes first and splices whole WAVs when each chunk carries
+  its own RIFF header, and falls back to Sarvam's documented join-then-decode otherwise.
+- **bulbul:v2 is deprecated** and returns a flat 400 from the live API. Speakers are tied to the
+  model: v2's `anushka` is refused by v3, whose roster is `shubh`, `aditya`, `ritu`, … `make
+  check-voice` calls the real endpoint and is how this was found.
+- The API **ignores unknown body fields** rather than rejecting them, so a 200 is no evidence a
+  parameter was honoured — and output is non-deterministic even at `temperature: 0.01`, so you
+  cannot A/B it by comparing bytes either. Follow the documentation: v3 wants `language_code`
+  (`target_language_code` is the legacy name and is probably just being ignored).
+- A 4xx body carries Sarvam's own `error.message`, which names a deprecated model or an
+  incompatible speaker exactly. `_explain` passes that through for client errors only; a 5xx gets
+  nothing but its status.
+- Browsers reject a delayed `audio.play()` with `NotAllowedError` when there has been no recent user
+  gesture, and StrictMode's double-invoked effect produces `AbortError`. Both are swallowed; a
+  message id is added to the spoken set *before* play precisely to avoid the second.
+- `expose_headers` on the CORS middleware is what makes `X-Saarthi-Voice-*` readable in the browser.
+  `allow_headers` governs the request, not the response, so this breaks silently the moment the
+  dashboard stops proxying through Vite.
 
 **Vertex AI**
 - Gemini 3.x is served from the **`global`** endpoint; regional endpoints 404 even though the models

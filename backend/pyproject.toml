@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-voice = ["sarvamai==0.1.33"]
+# Sarvam speaks plain HTTP through httpx, like the chat provider, so nothing
+# optional is needed for it. faster-whisper is the only real extra.
 whisper = ["faster-whisper>=1.2,<2"]
 
 [dependency-groups]

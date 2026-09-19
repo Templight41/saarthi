@@ -12,7 +12,7 @@ setup: ## Install backend and frontend dependencies
 	@test -f .env || cp .env.example .env
 
 setup-voice: ## Add the offline speech-to-text extra
-	$(UV) sync --extra voice --extra whisper
+	$(UV) sync --extra whisper
 
 db-up: ## Start PostgreSQL with pgvector
 	@docker info > /dev/null 2>&1 || { echo "Docker is not running. Start Docker Desktop and retry."; exit 1; }
@@ -81,4 +81,7 @@ n8n-logs: ## Tail the n8n log
 check-providers: ## Show which providers are actually live
 	@curl -sf localhost:8000/api/health | python3 -m json.tool
 
-.PHONY: help setup setup-voice db-up db-down db-reset seed backend frontend test test-backend test-frontend lint demo-reset demo-scenario n8n-install n8n-import n8n-up n8n-down n8n-logs check-providers
+check-voice: ## Make the speech provider actually say something
+	@$(UV) run python -m saarthi.voice.check
+
+.PHONY: help setup setup-voice db-up db-down db-reset seed backend frontend test test-backend test-frontend lint demo-reset demo-scenario n8n-install n8n-import n8n-up n8n-down n8n-logs check-providers check-voice

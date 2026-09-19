@@ -98,6 +98,13 @@ export const api = {
     request(`/api/simulation/settlement/${txn}/fail`, { method: 'POST' }),
   runProactive: () => request('/api/simulation/proactive', { method: 'POST' }),
 
+  /**
+   * A sent message never changes, so its audio is a plain cacheable URL that an
+   * audio element can take directly. There is deliberately no endpoint that
+   * synthesises arbitrary text: Saarthi may only say what it has already sent.
+   */
+  speechUrl: (messageId: string) => `${BASE}/api/voice/messages/${messageId}/speech`,
+
   transcribe: async (blob: Blob, hint?: string): Promise<TranscribeResult> => {
     const form = new FormData()
     form.append('audio', blob, 'clip.webm')

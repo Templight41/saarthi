@@ -228,28 +228,51 @@ class FasterWhisperTranscriber:
         )
 
 
+def resolve_transcriber(settings: Settings) -> tuple[str, str]:
+    """The (provider, model) `build_transcriber` intends to use.
+
+    `health()` reports from this and `build_transcriber` switches on it, so the
+    dashboard cannot claim one speech model while another is listening. The one
+    case it cannot foresee is faster-whisper failing to load, which is why
+    health prefers the name of an already-built transcriber when there is one.
+    """
+    provider = settings.voice_provider
+    if provider == "mock" or settings.whisper_model == "mock":
+        return "mock", "scripted"
+    if provider in {"gemini", "auto"} and settings.gemini_configured:
+        return "gemini", settings.gemini_transcribe_model
+    if provider in {"sarvam", "auto"} and settings.sarvam_api_key:
+        return "sarvam", settings.sarvam_stt_model
+    if provider in {"faster_whisper", "auto"}:
+        return "faster_whisper", settings.whisper_model
+    return "mock", "scripted"
+
+
 def build_transcriber(settings: Settings) -> Transcriber:
     """A real speech model unless deterministic stand-ins are explicitly allowed."""
     provider = settings.voice_provider
-    wants_mock = provider == "mock" or settings.whisper_model == "mock"
+    chosen, _ = resolve_transcriber(settings)
 
-    if wants_mock:
+    if chosen == "mock":
         if not settings.allow_simulated:
+            asked_for_mock = provider == "mock" or settings.whisper_model == "mock"
             raise RuntimeError(
                 "VOICE_PROVIDER=mock is refused. Use gemini, sarvam or "
                 "faster_whisper, or set ALLOW_SIMULATED=true."
+                if asked_for_mock
+                else f"No usable speech provider for VOICE_PROVIDER={provider}"
             )
         return MockTranscriber()
 
-    if provider in {"gemini", "auto"} and settings.gemini_configured:
+    if chosen == "gemini":
         return GeminiTranscriber(settings)
 
-    if provider in {"sarvam", "auto"} and settings.sarvam_api_key:
+    if chosen == "sarvam":
         return SarvamTranscriber(
             settings.sarvam_api_key, settings.sarvam_stt_model, settings.voice_language
         )
 
-    if provider in {"faster_whisper", "auto"}:
+    if chosen == "faster_whisper":
         try:
             return FasterWhisperTranscriber(settings.whisper_model, settings.whisper_compute_type)
         except ImportError as exc:

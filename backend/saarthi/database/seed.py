@@ -242,6 +242,7 @@ def _historical_case(
         sender=Actor.SAARTHI,
         content=outcome,
         status=MessageStatus.SENT,
+        meta={"stage": "OUTCOME", "claims": [], "language": "en-IN"},
         created_at=resolved,
     )
     return txn, stl, case, events, action, message
@@ -262,6 +263,7 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
         phone="+91 98200 11001",
         risk_level=RiskLevel.LOW,
         autonomous_refund_limit=Decimal("5000.00"),
+        language="en-IN",
         created_at=now - timedelta(days=420),
     )
     kaveri = Merchant(
@@ -271,6 +273,9 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
         phone="+91 98200 11002",
         risk_level=RiskLevel.MEDIUM,
         autonomous_refund_limit=Decimal("2000.00"),
+        # Kaveri is served in Hindi, which is what makes the proactive case
+        # demonstrate the language path end to end.
+        language="hi-IN",
         created_at=now - timedelta(days=200),
     )
     session.add_all([urban, kaveri])

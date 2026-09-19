@@ -227,8 +227,22 @@ export interface Health {
   memory: { provider: string }
   workflows: { engine: string; reachable?: boolean }
   voice: { provider: string; model: string }
+  tts: {
+    provider: string
+    model: string
+    speaker: string
+    language: string
+    enabled: boolean
+    characters_synthesised: number
+  }
   database: string
-  simulated: { llm: boolean; memory: boolean; workflows: boolean; voice: boolean }
+  simulated: {
+    llm: boolean
+    memory: boolean
+    workflows: boolean
+    voice: boolean
+    tts: boolean
+  }
   all_real: boolean
 }
 

@@ -57,6 +57,7 @@ async def build_context(
             "risk_level": merchant.risk_level.value,
             "autonomous_refund_limit": str(merchant.autonomous_refund_limit),
             "currency": merchant.currency,
+            "language": merchant.language,
         },
         memory=memory,
     )

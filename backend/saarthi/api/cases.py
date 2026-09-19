@@ -131,7 +131,12 @@ async def create_case(
         session, case_id=case.id, content=payload.message, channel=payload.channel
     )
     await record_event(
-        session, case, EventType.MESSAGE_RECEIVED, actor=Actor.MERCHANT, message=payload.message
+        session,
+        case,
+        EventType.MESSAGE_RECEIVED,
+        actor=Actor.MERCHANT,
+        message=payload.message,
+        meta={"channel": payload.channel.value},
     )
     await session.commit()
 
@@ -205,6 +210,7 @@ async def post_message(
             EventType.MESSAGE_RECEIVED,
             actor=Actor.MERCHANT,
             message=payload.message,
+            meta={"channel": payload.channel.value},
         )
         await session.commit()
         await runtime.runner.start(follow_up.id)
@@ -215,7 +221,12 @@ async def post_message(
         session, case_id=case.id, content=payload.message, channel=payload.channel
     )
     await record_event(
-        session, case, EventType.MESSAGE_RECEIVED, actor=Actor.MERCHANT, message=payload.message
+        session,
+        case,
+        EventType.MESSAGE_RECEIVED,
+        actor=Actor.MERCHANT,
+        message=payload.message,
+        meta={"channel": payload.channel.value},
     )
     await session.commit()
 
@@ -318,8 +329,9 @@ async def get_messages(case_id: str, session: AsyncSession = Depends(get_session
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages
-            # Unsent drafts are internal; the merchant has not seen them.
-            if m.status.value != "DRAFT"
+            # Unsent drafts are internal; the merchant has not seen them. The
+            # speech endpoint asks the same question of the same predicate.
+            if ops_service.is_merchant_visible(m)
         ],
     }
 

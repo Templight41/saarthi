@@ -159,6 +159,7 @@ async def _get_merchant(ctx: ToolContext, args: MerchantArgs) -> dict:
         "risk_level": m.risk_level.value,
         "autonomous_refund_limit": str(m.autonomous_refund_limit),
         "currency": m.currency,
+        "language": m.language,
     }
 
 
@@ -256,15 +257,20 @@ async def _draft_message(ctx: ToolContext, args: DraftMessageArgs) -> dict:
     """
     from ..agent.messaging import draft_for_stage
 
-    body, claims = await draft_for_stage(ctx, args.stage, args.facts)
+    body, claims, language = await draft_for_stage(ctx, args.stage, args.facts)
     message = await ops_service.draft_message(
         ctx.session,
         case_id=ctx.case.id,
         content=body,
         channel=args.channel,
-        meta={"stage": args.stage, "claims": claims},
+        meta={"stage": args.stage, "claims": claims, "language": language},
     )
-    return {"id": message.id, "content": message.content, "claims": claims}
+    return {
+        "id": message.id,
+        "content": message.content,
+        "claims": claims,
+        "language": language,
+    }
 
 
 async def _send_message(ctx: ToolContext, args: SendMessageArgs) -> dict:

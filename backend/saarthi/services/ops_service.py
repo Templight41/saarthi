@@ -65,6 +65,13 @@ async def update_ticket(session: AsyncSession, ticket_id: str, *, status: Ticket
     return ticket
 
 
+def is_merchant_visible(message: Message) -> bool:
+    """A draft is internal: the merchant has not seen it, and it may be a
+    claims-guard rejection still awaiting a redraft. One predicate, so the
+    messages endpoint and the speech endpoint cannot disagree about it."""
+    return message.status == MessageStatus.SENT
+
+
 async def draft_message(
     session: AsyncSession,
     *,
