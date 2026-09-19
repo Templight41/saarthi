@@ -33,15 +33,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.database import utcnow
-from ..database.enums import CaseStatus, PaymentStatus, RefundStatus, SettlementStatus
+from ..database.enums import UNSETTLED_SETTLEMENT, CaseStatus, PaymentStatus, RefundStatus, SettlementStatus
 from ..database.models import (
     Case,
     Escalation,
     Refund,
     Settlement,
     Transaction,
-    TransactionEvent,
 )
+from ..services import notification_service
 
 
 class PatternType(StrEnum):
@@ -244,7 +244,7 @@ async def _settlement_delays(
         if settlement.status == SettlementStatus.COMPLETED and landed is not None:
             late = landed > deadline
             at = landed
-        elif settlement.status in {SettlementStatus.PENDING, SettlementStatus.FAILED}:
+        elif settlement.status in {*UNSETTLED_SETTLEMENT, SettlementStatus.FAILED}:
             late = now > deadline
             at = settlement.expected_at
         else:
@@ -335,32 +335,21 @@ async def _notification_mismatches(
 ) -> list[Occurrence]:
     """A payment the merchant was told about that the ledger cannot confirm.
 
-    The Soundbox announces; the ledger decides. This reads the notification
-    events that Phase 4 will start writing, so it finds nothing until then —
-    and it finds it correctly, rather than being absent and needing wiring
-    later.
+    The Soundbox announces; the ledger decides. Reconciliation is asked rather
+    than reimplemented, so this counts exactly what Scenario 4 investigates.
     """
-    rows = await session.execute(
-        select(TransactionEvent, Transaction)
-        .join(Transaction, TransactionEvent.transaction_id == Transaction.id)
-        .where(
-            Transaction.merchant_id == merchant_id,
-            TransactionEvent.kind.in_(NOTIFICATION_EVENT_KINDS),
-            TransactionEvent.occurred_at >= since,
-        )
+    results = await notification_service.reconcile_recent(
+        session, merchant_id, since=since, limit=100
     )
     return [
         Occurrence(
-            at=event.occurred_at,
-            transaction_id=txn.id,
-            detail="payment announced but not confirmed by the ledger",
+            at=r.announced_at,
+            transaction_id=r.transaction_id,
+            detail=r.explanation,
         )
-        for event, txn in rows
-        if txn.payment_status != PaymentStatus.SUCCESS
+        for r in results
+        if not r.confirmed
     ]
-
-
-NOTIFICATION_EVENT_KINDS = ("SOUNDBOX_PAYMENT_ANNOUNCED", "NOTIFICATION_PAYMENT_ANNOUNCED")
 
 
 async def _repeated_escalations(

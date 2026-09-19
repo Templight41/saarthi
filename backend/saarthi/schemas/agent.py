@@ -21,6 +21,8 @@ class Intent(StrEnum):
     PRODUCT_QUALITY_DISPUTE = "PRODUCT_QUALITY_DISPUTE"
     HIGH_VALUE_REFUND = "HIGH_VALUE_REFUND"
     GENERAL_TRANSACTION_QUERY = "GENERAL_TRANSACTION_QUERY"
+    # The merchant's device said one thing and their dashboard shows another.
+    NOTIFICATION_MISMATCH = "NOTIFICATION_MISMATCH"
     UNKNOWN = "UNKNOWN"
 
 
@@ -30,6 +32,9 @@ class RootCause(StrEnum):
     CUSTOMER_REFUND_REQUEST = "CUSTOMER_REFUND_REQUEST"
     PRODUCT_QUALITY_DISPUTE = "PRODUCT_QUALITY_DISPUTE"
     REFUND_IN_PROGRESS = "REFUND_IN_PROGRESS"
+    # A device announced a payment the ledger has never heard of. Not a
+    # payment, and not something to refund — something to investigate.
+    ANNOUNCEMENT_WITHOUT_PAYMENT = "ANNOUNCEMENT_WITHOUT_PAYMENT"
     NO_ISSUE_FOUND = "NO_ISSUE_FOUND"
     UNKNOWN = "UNKNOWN"
 
@@ -184,6 +189,9 @@ class EscalationReason(StrEnum):
     STATE_CONFLICT = "STATE_CONFLICT"
     RETRY_DENIED = "RETRY_DENIED"
     SENSITIVE_ACTION = "SENSITIVE_ACTION"
+    # A device announced a payment the ledger has no record of. There is
+    # nothing to act on and nothing safe to assume.
+    NO_AUTHORITATIVE_RECORD = "NO_AUTHORITATIVE_RECORD"
 
 
 # Escalation reasons where a human was REQUIRED by policy rather than the agent
@@ -195,6 +203,8 @@ POLICY_MANDATED_REASONS = frozenset(
         EscalationReason.SUBJECTIVE_DISPUTE,
         EscalationReason.MERCHANT_REQUESTED_HUMAN,
         EscalationReason.SENSITIVE_ACTION,
+        # Refusing to invent a payment is the system working, not failing.
+        EscalationReason.NO_AUTHORITATIVE_RECORD,
     }
 )
 

@@ -33,8 +33,54 @@ class PaymentStatus(StrEnum):
 
 class SettlementStatus(StrEnum):
     PENDING = "PENDING"
+    # Past its expected window. Still on its way, but late enough that the
+    # monitor has noticed — a distinct fact from "not due yet", which is what
+    # lets a proactive case say something true about why it opened.
+    OVERDUE = "OVERDUE"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+
+
+#: Settlement has not landed. Anywhere that used to mean `== PENDING` means
+#: this, or an overdue settlement quietly stops counting as unsettled.
+UNSETTLED_SETTLEMENT = frozenset({SettlementStatus.PENDING, SettlementStatus.OVERDUE})
+
+
+class PaymentMethod(StrEnum):
+    """How the customer paid. A Soundbox is a speaker attached to a QR stand,
+    not a payment rail of its own — it announces what the rail reports."""
+
+    QR = "QR"
+    UPI = "UPI"
+    CARD = "CARD"
+    NETBANKING = "NETBANKING"
+    WALLET = "WALLET"
+
+
+class NotificationChannel(StrEnum):
+    SOUNDBOX = "SOUNDBOX"
+    SMS = "SMS"
+    APP_PUSH = "APP_PUSH"
+
+
+class NotificationKind(StrEnum):
+    PAYMENT_ANNOUNCED = "PAYMENT_ANNOUNCED"
+    SETTLEMENT_ANNOUNCED = "SETTLEMENT_ANNOUNCED"
+    REFUND_ANNOUNCED = "REFUND_ANNOUNCED"
+
+
+class ReconciliationOutcome(StrEnum):
+    """What the ledger says about something the merchant was told.
+
+    `NO_AUTHORITATIVE_RECORD` is the one that matters: the device announced a
+    payment and the ledger has never heard of it. That is not a payment.
+    """
+
+    MATCHED_SUCCESS = "MATCHED_SUCCESS"
+    MATCHED_PENDING = "MATCHED_PENDING"
+    MATCHED_FAILED = "MATCHED_FAILED"
+    AMOUNT_MISMATCH = "AMOUNT_MISMATCH"
+    NO_AUTHORITATIVE_RECORD = "NO_AUTHORITATIVE_RECORD"
 
 
 class DisputeType(StrEnum):

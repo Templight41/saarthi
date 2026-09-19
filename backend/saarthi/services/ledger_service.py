@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.database import utcnow
 from ..database.enums import (
+    UNSETTLED_SETTLEMENT,
     CaseStatus,
     DisputeStatus,
     DisputeType,
@@ -89,7 +90,7 @@ async def get_settlement_eta(session: AsyncSession, transaction_id: str) -> Sett
     stl = await get_settlement(session, transaction_id)
     eta_seconds: int | None = None
     overdue = False
-    if stl.expected_at is not None and stl.status == SettlementStatus.PENDING:
+    if stl.expected_at is not None and stl.status in UNSETTLED_SETTLEMENT:
         delta = (stl.expected_at - utcnow()).total_seconds()
         eta_seconds = int(delta)
         overdue = delta < 0
@@ -152,7 +153,7 @@ async def find_delayed_settlements(session: AsyncSession, grace_seconds: int) ->
         select(Settlement, Transaction)
         .join(Transaction, Transaction.id == Settlement.transaction_id)
         .where(
-            Settlement.status == SettlementStatus.PENDING,
+            Settlement.status.in_(UNSETTLED_SETTLEMENT),
             Settlement.monitor_armed.is_(True),
             Settlement.expected_at.is_not(None),
         )

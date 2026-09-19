@@ -11,7 +11,7 @@ import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database.enums import PaymentStatus, SettlementStatus
+from ..database.enums import UNSETTLED_SETTLEMENT, PaymentStatus
 from ..services import ledger_service
 
 TXN_PATTERN = re.compile(r"\b(TXN[A-Z0-9_]+)\b", re.IGNORECASE)
@@ -56,7 +56,7 @@ async def resolve_transaction(
             settlement = await ledger_service.get_settlement(session, txn.id)
         except Exception:  # noqa: BLE001
             continue
-        if settlement.status == SettlementStatus.PENDING:
+        if settlement.status in UNSETTLED_SETTLEMENT:
             problematic.append(txn)
 
     if len(problematic) == 1:

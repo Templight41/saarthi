@@ -30,6 +30,9 @@ from .enums import (
     MessageChannel,
     MessageDirection,
     MessageStatus,
+    NotificationChannel,
+    NotificationKind,
+    PaymentMethod,
     PaymentStatus,
     RefundStatus,
     Resolution,
@@ -70,6 +73,9 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="INR")
     payment_status: Mapped[PaymentStatus] = mapped_column(portable_enum(PaymentStatus))
+    payment_method: Mapped[PaymentMethod] = mapped_column(
+        portable_enum(PaymentMethod), default=PaymentMethod.QR
+    )
     customer_debited: Mapped[bool] = mapped_column(Boolean, default=False)
     customer_reference: Mapped[str] = mapped_column(String(80), default="")
     description: Mapped[str] = mapped_column(String(300), default="")
@@ -89,6 +95,36 @@ class TransactionEvent(Base):
     kind: Mapped[str] = mapped_column(String(60), nullable=False)
     detail: Mapped[dict] = mapped_column(JSONType, default=dict)
     occurred_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow)
+
+
+class NotificationEvent(Base):
+    """What the merchant was told. Not what is true.
+
+    A Soundbox announcing "payment received" is *evidence*, at the same level
+    as the merchant saying so — never a payment. This is a separate table from
+    `transaction_events` for one structural reason: `reference` is plain text,
+    not a foreign key, so a device can announce a payment the ledger has never
+    heard of. A foreign key would make that unrepresentable, and it is exactly
+    the case Saarthi must not resolve by inventing a transaction.
+    """
+
+    __tablename__ = "notification_events"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    merchant_id: Mapped[str] = mapped_column(ForeignKey("merchants.id"), index=True)
+    channel: Mapped[NotificationChannel] = mapped_column(
+        portable_enum(NotificationChannel), default=NotificationChannel.SOUNDBOX
+    )
+    kind: Mapped[NotificationKind] = mapped_column(
+        portable_enum(NotificationKind), default=NotificationKind.PAYMENT_ANNOUNCED
+    )
+    device_id: Mapped[str] = mapped_column(String(60), default="")
+    # What the device said it was about. Free text on purpose: it may name a
+    # transaction that exists, one that does not, or nothing at all.
+    reference: Mapped[str] = mapped_column(String(80), default="")
+    announced_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), default="INR")
+    announced_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, index=True)
+    meta: Mapped[dict] = mapped_column("metadata", JSONType, default=dict)
 
 
 class Settlement(Base):

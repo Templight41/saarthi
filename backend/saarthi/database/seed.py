@@ -14,6 +14,7 @@ from decimal import Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..services import notification_service
 from .database import utcnow
 from .enums import (
     ActionStatus,
@@ -27,6 +28,7 @@ from .enums import (
     MessageChannel,
     MessageDirection,
     MessageStatus,
+    PaymentMethod,
     PaymentStatus,
     RefundStatus,
     Resolution,
@@ -44,6 +46,7 @@ from .models import (
     MemoryDocument,
     Merchant,
     Message,
+    NotificationEvent,
     Policy,
     ProactiveAlert,
     Refund,
@@ -58,6 +61,7 @@ SEED_VERSION = "1.0.0"
 
 # Delete order respects foreign keys.
 _WIPE_ORDER = [
+    NotificationEvent,
     ProactiveAlert,
     WorkflowRun,
     AgentEvent,
@@ -283,7 +287,17 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
         language="hi-IN",
         created_at=now - timedelta(days=200),
     )
-    session.add_all([urban, kaveri])
+    anand = Merchant(
+        id="M1003",
+        name="Anand Tea Stall",
+        email="anand@anandtea.in",
+        phone="+91 98200 11003",
+        risk_level=RiskLevel.LOW,
+        autonomous_refund_limit=Decimal("1000.00"),
+        language="en-IN",
+        created_at=now - timedelta(days=95),
+    )
+    session.add_all([urban, kaveri, anand])
     await session.flush()
 
     # ---- Scenario A: settlement delay -------------------------------------
@@ -433,6 +447,72 @@ async def seed_all(session: AsyncSession, *, now: datetime | None = None) -> dic
         monitor_armed=False,
     )
     session.add_all([txn_p, stl_p])
+    await session.flush()
+
+    # ---- Scenario 4: the Soundbox announced, the ledger decides -----------
+    # Three announcements, three authoritative answers. The merchant cannot
+    # tell them apart — they all sounded identical on the counter.
+    soundbox = [
+        # A: the payment is real. The dashboard, not the money, was the problem.
+        (
+            "TXN_SOUNDBOX_OK",
+            Decimal("240.00"),
+            PaymentStatus.SUCCESS,
+            SettlementStatus.COMPLETED,
+            "Counter sale, 2 chai + samosa",
+        ),
+        # B: real, but not yet confirmed by the bank.
+        (
+            "TXN_SOUNDBOX_PENDING",
+            Decimal("180.00"),
+            PaymentStatus.PAYMENT_PENDING,
+            SettlementStatus.PENDING,
+            "Counter sale, thali",
+        ),
+    ]
+    for index, (txn_id, amount, payment_status, stl_status, description) in enumerate(soundbox):
+        session.add(
+            Transaction(
+                id=txn_id,
+                merchant_id="M1003",
+                amount=amount,
+                payment_status=payment_status,
+                payment_method=PaymentMethod.QR,
+                customer_debited=True,
+                customer_reference=f"CUST-770{index}",
+                description=description,
+                created_at=now - timedelta(minutes=40 - index * 10),
+            )
+        )
+        await session.flush()
+        session.add(
+            Settlement(
+                id=f"STL-210{index}",
+                transaction_id=txn_id,
+                status=stl_status,
+                expected_at=now + timedelta(hours=2),
+                completed_at=now - timedelta(minutes=5) if stl_status == SettlementStatus.COMPLETED else None,
+            )
+        )
+        await notification_service.record_announcement(
+            session,
+            merchant_id="M1003",
+            reference=txn_id,
+            announced_amount=amount,
+            device_id="SB-77104412",
+            announced_at=now - timedelta(minutes=39 - index * 10),
+        )
+
+    # C: the device announced a payment the ledger has never heard of. There is
+    # deliberately no Transaction row here — that absence is the fixture.
+    await notification_service.record_announcement(
+        session,
+        merchant_id="M1003",
+        reference="TXN20455",
+        announced_amount=Decimal("500.00"),
+        device_id="SB-77104412",
+        announced_at=now - timedelta(minutes=12),
+    )
     await session.flush()
 
     # ---- Historical resolved cases ----------------------------------------

@@ -13,7 +13,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import ClassVar
 
-from ..database.enums import DisputeStatus, PaymentStatus, RefundStatus, SettlementStatus
+from ..database.enums import (
+    UNSETTLED_SETTLEMENT,
+    DisputeStatus,
+    PaymentStatus,
+    RefundStatus,
+)
 from ..database.models import Dispute, Merchant, Refund, Settlement, Transaction
 from ..schemas.agent import (
     Diagnosis,
@@ -225,7 +230,7 @@ class PendingPaymentPolicy(PolicyRule):
             return None
         if txn.payment_status != PaymentStatus.PAYMENT_PENDING:
             return None
-        if stl.status != SettlementStatus.PENDING:
+        if stl.status not in UNSETTLED_SETTLEMENT:
             return None
 
         grace = timedelta(minutes=int(self.configuration.get("grace_minutes", 30)))

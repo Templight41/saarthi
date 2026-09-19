@@ -39,6 +39,7 @@ from ..schemas.agent import (
     PolicyDecisionType,
     ProposedAction,
     RecoveryDecision,
+    RootCause,
     VerificationStatus,
 )
 from ..services import ledger_service, refund_service
@@ -414,6 +415,17 @@ class Supervisor:
         if diagnosis.merchant_requests_human:
             ctx.escalation_reason = EscalationReason.MERCHANT_REQUESTED_HUMAN
             return StepOutcome(CaseStatus.ESCALATED, "the merchant asked to speak to a person")
+
+        if diagnosis.root_cause == RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT:
+            # A device said money arrived and the ledger has never heard of it.
+            # Whether that is a faulty Soundbox, a customer who did not pay, or
+            # fraud is a judgement about evidence, not a lookup — and every
+            # autonomous option here starts by assuming a payment exists.
+            ctx.escalation_reason = EscalationReason.NO_AUTHORITATIVE_RECORD
+            return StepOutcome(
+                CaseStatus.ESCALATED,
+                "a device announced a payment the ledger has no record of",
+            )
 
         if diagnosis.confidence < self.settings.diagnosis_confidence_threshold:
             ctx.escalation_reason = EscalationReason.LOW_CONFIDENCE

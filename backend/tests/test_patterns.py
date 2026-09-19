@@ -22,6 +22,7 @@ from saarthi.database.enums import (
     CaseStatus,
     EscalationStatus,
     PaymentStatus,
+    ReconciliationOutcome,
     RefundStatus,
     RiskLevel,
     SettlementStatus,
@@ -33,7 +34,6 @@ from saarthi.database.models import (
     Refund,
     Settlement,
     Transaction,
-    TransactionEvent,
 )
 from saarthi.memory.patterns import (
     RULES,
@@ -42,6 +42,7 @@ from saarthi.memory.patterns import (
     detect_patterns,
     merchant_profile,
 )
+from saarthi.services import notification_service
 
 pytestmark = pytest.mark.asyncio
 
@@ -314,30 +315,68 @@ async def test_a_volume_spike_is_measured_against_the_merchants_own_baseline(ses
 
 
 async def test_an_announced_payment_the_ledger_cannot_confirm_is_a_mismatch(session):
-    """The detector Phase 4's Soundbox will light up. It finds nothing today
-    because nothing writes these events yet — which is the correct answer."""
+    """The Soundbox announces; the ledger decides.
+
+    Four announcements, one per authoritative outcome. Only the one the ledger
+    confirms is not a mismatch — including the announcement for a transaction
+    that does not exist at all, which is the case that matters most.
+    """
     await _merchant(session, "M9011")
     assert _pattern(await detect_patterns(session, "M9011"), PatternType.NOTIFICATION_MISMATCH) is None
 
     now = utcnow()
-    for i, status in enumerate([PaymentStatus.FAILED, PaymentStatus.PAYMENT_PENDING, PaymentStatus.SUCCESS]):
-        txn = Transaction(
-            id=f"TXN99{i}", merchant_id="M9011", amount=Decimal("100.00"), payment_status=status
-        )
-        session.add(txn)
-        await session.flush()
+    statuses = [PaymentStatus.FAILED, PaymentStatus.PAYMENT_PENDING, PaymentStatus.SUCCESS]
+    for i, status in enumerate(statuses):
         session.add(
-            TransactionEvent(
-                transaction_id=txn.id,
-                kind="SOUNDBOX_PAYMENT_ANNOUNCED",
-                occurred_at=now - timedelta(days=i + 1),
+            Transaction(
+                id=f"TXN99{i}", merchant_id="M9011", amount=Decimal("100.00"), payment_status=status
             )
         )
+        await session.flush()
+        await notification_service.record_announcement(
+            session,
+            merchant_id="M9011",
+            reference=f"TXN99{i}",
+            announced_amount=Decimal("100.00"),
+            announced_at=now - timedelta(days=i + 1),
+        )
+    # A payment the ledger has never heard of.
+    await notification_service.record_announcement(
+        session,
+        merchant_id="M9011",
+        reference="TXN-PHANTOM",
+        announced_amount=Decimal("100.00"),
+        announced_at=now - timedelta(days=1),
+    )
     await session.flush()
 
     found = _pattern(await detect_patterns(session, "M9011"), PatternType.NOTIFICATION_MISMATCH)
-    # The announcement backed by a successful payment is not a mismatch.
-    assert found.event_count == 2
+    assert found is not None
+    # Failed, pending and phantom. The successful one is not a mismatch.
+    assert found.event_count == 3
+
+
+async def test_an_announcement_is_scoped_to_the_merchant_who_heard_it(session):
+    """A device must not surface another merchant's transaction by naming it."""
+    await _merchant(session, "M9012")
+    await _merchant(session, "M9013")
+    session.add(
+        Transaction(
+            id="TXN-OTHER",
+            merchant_id="M9013",
+            amount=Decimal("100.00"),
+            payment_status=PaymentStatus.SUCCESS,
+        )
+    )
+    await session.flush()
+
+    event = await notification_service.record_announcement(
+        session, merchant_id="M9012", reference="TXN-OTHER", announced_amount=Decimal("100.00")
+    )
+    result = await notification_service.reconcile(session, event)
+
+    assert result.outcome is ReconciliationOutcome.NO_AUTHORITATIVE_RECORD
+    assert result.transaction_id is None
 
 
 # --------------------------------------------------------------------------

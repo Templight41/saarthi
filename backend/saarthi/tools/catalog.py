@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..agent.events import EventType
 from ..database.enums import DisputeStatus, DisputeType, MessageChannel, TicketPriority, TicketStatus
-from ..services import ledger_service, ops_service, refund_service
+from ..services import ledger_service, notification_service, ops_service, refund_service
 from .registry import ToolContext, ToolRegistry, ToolSpec
 
 registry = ToolRegistry()
@@ -184,6 +184,38 @@ async def _get_refund(ctx: ToolContext, args: RefundIdArgs) -> dict:
     return _refund_dict(refund)
 
 
+async def _get_soundbox_notifications(ctx: ToolContext, args: MerchantArgs) -> dict:
+    """What the merchant's devices announced. Evidence, never payment state."""
+    events = await notification_service.list_announcements(ctx.session, args.merchant_id)
+    return {
+        "count": len(events),
+        "authoritative": False,
+        "notifications": [
+            {
+                "id": e.id,
+                "channel": e.channel.value,
+                "kind": e.kind.value,
+                "device_id": e.device_id,
+                "reference": e.reference,
+                "announced_amount": str(e.announced_amount) if e.announced_amount else None,
+                "announced_at": e.announced_at.isoformat(),
+            }
+            for e in events
+        ],
+    }
+
+
+async def _reconcile_notifications(ctx: ToolContext, args: MerchantArgs) -> dict:
+    """Ask the ledger about each announcement. This is the only crossing from
+    what the merchant was told to what is actually true."""
+    results = await notification_service.reconcile_recent(ctx.session, args.merchant_id)
+    return {
+        "count": len(results),
+        "unconfirmed": sum(1 for r in results if not r.confirmed),
+        "reconciliations": [r.as_dict() for r in results],
+    }
+
+
 def _refund_dict(refund) -> dict:
     return {
         "id": refund.id,
@@ -333,6 +365,18 @@ _READ_TOOLS = [
         _get_merchant_history,
     ),
     ("get_refund", "Read a refund record.", RefundIdArgs, _get_refund),
+    (
+        "get_soundbox_notifications",
+        "Read what the merchant's Soundbox and other devices announced. Evidence, not payment state.",
+        MerchantArgs,
+        _get_soundbox_notifications,
+    ),
+    (
+        "reconcile_notifications",
+        "Check each device announcement against authoritative payment state.",
+        MerchantArgs,
+        _reconcile_notifications,
+    ),
 ]
 
 for _name, _desc, _model, _handler in _READ_TOOLS:

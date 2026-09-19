@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import Case
 from ..memory.patterns import detect_patterns
-from ..services import ledger_service, ops_service, refund_service
+from ..services import ledger_service, notification_service, ops_service, refund_service
 
 
 @dataclass
@@ -31,6 +31,7 @@ class CaseContext:
     merchant_history: dict[str, Any] = field(default_factory=dict)
     memory: dict[str, Any] | None = None
     patterns: list[dict] = field(default_factory=list)
+    notifications: list[dict] = field(default_factory=list)
 
     def for_prompt(self) -> dict:
         """The subset handed to the model. Memory is explicitly marked advisory."""
@@ -47,6 +48,10 @@ class CaseContext:
             # Counted from Postgres, but still history: it says what keeps
             # happening to this merchant, never what is true of this payment.
             "merchant_patterns_advisory_only": self.patterns,
+            # What the merchant's devices said, each already checked against
+            # the ledger. Named so the model cannot mistake an announcement
+            # for a payment: only `transaction` above says what is true.
+            "device_announcements_evidence_only": self.notifications,
         }
 
 
@@ -73,6 +78,9 @@ async def build_context(
         if prior.intent:
             by_intent[prior.intent] = by_intent.get(prior.intent, 0) + 1
     ctx.patterns = [p.as_dict() for p in await detect_patterns(session, case.merchant_id)]
+    ctx.notifications = [
+        r.as_dict() for r in await notification_service.reconcile_recent(session, case.merchant_id)
+    ]
     ctx.merchant_history = {
         "previous_case_count": len(history),
         "by_intent": by_intent,

@@ -27,6 +27,7 @@ SEEDS: dict[str, tuple[str, int]] = {
     "memory": ("MEM-", 100),
     "workflow": ("WF-", 200),
     "alert": ("ALERT-", 50),
+    "notification": ("NTF-", 800),
 }
 
 

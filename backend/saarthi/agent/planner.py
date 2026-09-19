@@ -56,6 +56,8 @@ class Planner:
                 return self._plan_refund_request(diagnosis, ctx)
             case (Intent.REFUND_STATUS, _):
                 return self._plan_refund_status(ctx)
+            case (Intent.NOTIFICATION_MISMATCH, _):
+                return self._plan_notification_mismatch(ctx)
             case (_, RootCause.NO_ISSUE_FOUND):
                 return self._plan_no_issue(ctx)
             case (_, RootCause.PAYMENT_FAILED_CONFIRMED):
@@ -319,6 +321,45 @@ class Planner:
                         "transaction_id": txn.get("id"),
                         "payment_status": "SUCCESS",
                     },
+                ),
+                GoalCondition(kind="MESSAGE_SENT", params={}),
+            ],
+        )
+
+    def _plan_notification_mismatch(self, ctx: CaseContext) -> Plan:
+        """The device announced a payment and the ledger confirms it.
+
+        Only reachable once reconciliation has matched the announcement to a
+        successful transaction — a pending one is clamped to a settlement
+        delay, and an unmatched one never reaches a plan at all, because the
+        case escalates before planning. So this says what is true and stops:
+        the discrepancy was the merchant's dashboard, not their money.
+        """
+        txn = self._txn(ctx)
+        confirmed = [n for n in ctx.notifications if n.get("confirmed_by_ledger")]
+        announced = confirmed[0] if confirmed else {}
+        return Plan(
+            goal="The merchant knows the payment is real and where to see it.",
+            steps=[
+                ProposedAction(
+                    tool="draft_message",
+                    args={
+                        "stage": "NO_ISSUE",
+                        "facts": {
+                            "transaction_id": txn.get("id"),
+                            "amount": txn.get("amount"),
+                            "announced_at": announced.get("announced_at"),
+                            "confirmed_by_ledger": True,
+                        },
+                    },
+                    purpose="Confirm the announced payment against the ledger",
+                ),
+                ProposedAction(tool="send_message", args={}, purpose="Notify the merchant"),
+            ],
+            goal_conditions=[
+                GoalCondition(
+                    kind="TRANSACTION_STATE_MATCHES",
+                    params={"transaction_id": txn.get("id"), "payment_status": "SUCCESS"},
                 ),
                 GoalCondition(kind="MESSAGE_SENT", params={}),
             ],

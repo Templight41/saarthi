@@ -101,6 +101,36 @@ def clamp_to_facts(diagnosis: Diagnosis, ctx: CaseContext, *, registry=None) -> 
             diagnosis.requested_amount = Decimal(str(open_quality[0]["requested_amount"]))
             clamped.append("requested_amount")
 
+    # An announcement the ledger cannot confirm is never a payment. The model
+    # is drawn towards believing the merchant's device, because the merchant
+    # believes it; the ledger is what decides.
+    unconfirmed = [n for n in ctx.notifications if not n.get("confirmed_by_ledger")]
+    orphaned = [
+        n for n in unconfirmed if n.get("outcome") == "NO_AUTHORITATIVE_RECORD"
+    ]
+    if unconfirmed and not txn.get("id") and orphaned:
+        if diagnosis.root_cause != RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT:
+            diagnosis.root_cause = RootCause.ANNOUNCEMENT_WITHOUT_PAYMENT
+            clamped.append("root_cause")
+        if diagnosis.intent != Intent.NOTIFICATION_MISMATCH:
+            diagnosis.intent = Intent.NOTIFICATION_MISMATCH
+            clamped.append("intent")
+        # There is no transaction to act on, so there is nothing an agent can
+        # safely do on its own. Inventing one would be the worst outcome here.
+        if not diagnosis.requires_human:
+            diagnosis.requires_human = True
+            clamped.append("requires_human")
+    elif unconfirmed and diagnosis.intent == Intent.NOTIFICATION_MISMATCH:
+        # The announcement resolved to a real transaction: whatever is wrong
+        # with it, the root cause is that transaction's state, not the device.
+        matched = txn.get("payment_status")
+        if matched == "PAYMENT_PENDING" and diagnosis.root_cause != RootCause.SETTLEMENT_DELAY:
+            diagnosis.root_cause = RootCause.SETTLEMENT_DELAY
+            clamped.append("root_cause")
+        elif matched == "FAILED" and diagnosis.root_cause != RootCause.PAYMENT_FAILED_CONFIRMED:
+            diagnosis.root_cause = RootCause.PAYMENT_FAILED_CONFIRMED
+            clamped.append("root_cause")
+
     # A requested amount over the merchant's authority is at least medium risk.
     limit = Decimal(str(ctx.merchant.get("autonomous_refund_limit", "0")))
     if diagnosis.requested_amount is not None and diagnosis.requested_amount > limit:
