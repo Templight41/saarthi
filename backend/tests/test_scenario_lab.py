@@ -259,3 +259,83 @@ def test_the_agent_cannot_see_which_scenario_is_running():
         if "scenarios" in path.read_text() or "SCENARIOS" in path.read_text()
     ]
     assert offenders == []
+
+
+# --------------------------------------------------------------------------
+# A follow-up question gets an answer
+# --------------------------------------------------------------------------
+async def test_a_question_on_a_parked_case_is_answered(client):
+    """A live case filed "how long for payment to settle" and never replied.
+
+    `post_message` only started the agent for a case in RECEIVED, so on a
+    parked or running case the merchant's question was recorded and dropped.
+    """
+    run = await _run(client, "settlement_delay")
+    case_id = run["case_id"]
+    before = (await client.get(f"/api/cases/{case_id}/messages")).json()["messages"]
+    assert run["status"]["case_status"] not in {"RESOLVED", "RECEIVED"}
+
+    await client.post(
+        f"/api/cases/{case_id}/message", json={"message": "how long for payment to settle"}
+    )
+
+    after = (await client.get(f"/api/cases/{case_id}/messages")).json()["messages"]
+    replies = [m for m in after if m["direction"] == "OUTBOUND"]
+    assert len(replies) > len([m for m in before if m["direction"] == "OUTBOUND"])
+    assert "pending" in replies[-1]["content"].lower()
+
+
+async def test_answering_a_question_does_not_disturb_the_plan(client):
+    """Chatter must not redirect the agent — it only earns a reply."""
+    run = await _run(client, "settlement_delay")
+    case_id = run["case_id"]
+    before = (await client.get(f"/api/cases/{case_id}")).json()
+    events_before = (await client.get(f"/api/cases/{case_id}/timeline")).json()["events"]
+
+    await client.post(
+        f"/api/cases/{case_id}/message", json={"message": "how long for payment to settle"}
+    )
+
+    after = (await client.get(f"/api/cases/{case_id}")).json()
+    assert after["status"] == before["status"]
+    assert after["wait_reason"] == before["wait_reason"]
+    assert after["transaction_id"] == before["transaction_id"]
+
+    # No new plan, no new action: only the conversation moved.
+    new_types = {
+        e["type"]
+        for e in (await client.get(f"/api/cases/{case_id}/timeline")).json()["events"]
+        [len(events_before) :]
+    }
+    assert not (new_types & {"PLAN_CREATED", "ACTION_STARTED", "STATE_CHANGED"})
+
+
+async def test_a_question_on_an_escalated_case_is_still_answered(client):
+    run = await _run(client, "high_value_dispute")
+    case_id = run["case_id"]
+    assert run["status"]["case_status"] == "ESCALATED"
+
+    await client.post(f"/api/cases/{case_id}/message", json={"message": "any update on this?"})
+
+    messages = (await client.get(f"/api/cases/{case_id}/messages")).json()["messages"]
+    reply = [m for m in messages if m["direction"] == "OUTBOUND"][-1]
+    assert "colleague" in reply["content"].lower()
+    # Still awaiting the person; answering is not deciding.
+    assert (await client.get(f"/api/cases/{case_id}")).json()["status"] == "ESCALATED"
+
+
+async def test_saarthi_does_not_talk_over_a_person_who_took_the_case(client):
+    run = await _run(client, "high_value_dispute")
+    case_id = run["case_id"]
+    escalations = (await client.get("/api/escalations?status=PENDING_HUMAN")).json()["escalations"]
+    await client.post(
+        f"/api/escalations/{escalations[0]['id']}/takeover",
+        json={"assigned_to": "ops@urbanthreads.in"},
+    )
+    before = (await client.get(f"/api/cases/{case_id}/messages")).json()["messages"]
+
+    await client.post(f"/api/cases/{case_id}/message", json={"message": "hello?"})
+
+    after = (await client.get(f"/api/cases/{case_id}/messages")).json()["messages"]
+    outbound = [m for m in after if m["direction"] == "OUTBOUND"]
+    assert len(outbound) == len([m for m in before if m["direction"] == "OUTBOUND"])

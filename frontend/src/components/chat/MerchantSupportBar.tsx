@@ -2,8 +2,10 @@ import { useRef, useState } from 'react'
 import { Loader2, Mic, Send, Square } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../services/api'
-import { useRefreshAll } from '../../hooks/queries'
-import { Button } from '../ui'
+import { useLanguages, useMerchants, useRefreshAll } from '../../hooks/queries'
+import { Button, Mono } from '../ui'
+
+const AUTO = 'auto'
 
 type VoiceState = 'idle' | 'listening' | 'transcribing'
 
@@ -17,6 +19,13 @@ type VoiceState = 'idle' | 'listening' | 'transcribing'
  * watch the work happen rather than waiting for a reply.
  */
 export function MerchantSupportBar({ merchantId = 'M1001' }: { merchantId?: string }) {
+  const { data: merchantInfo } = useMerchants()
+  const { data: languageInfo } = useLanguages()
+  const [merchant, setMerchant] = useState(merchantId)
+  // `auto` means: say nothing, let the transcriber decide, and fall back to
+  // the merchant's own default for anything typed.
+  const [language, setLanguage] = useState(AUTO)
+  const [detected, setDetected] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [voice, setVoice] = useState<VoiceState>('idle')
   const [note, setNote] = useState<string | null>(null)
@@ -35,8 +44,11 @@ export function MerchantSupportBar({ merchantId = 'M1001' }: { merchantId?: stri
     try {
       const created = await api.createCase({
         message,
-        merchant_id: merchantId,
+        merchant_id: merchant,
         channel: spokeRef.current ? 'VOICE' : 'CHAT',
+        // An explicit choice wins; otherwise whatever they were heard
+        // speaking; otherwise nothing, and the merchant's default applies.
+        language: language === AUTO ? detected : language,
       })
       setDraft('')
       spokeRef.current = false
@@ -62,10 +74,21 @@ export function MerchantSupportBar({ merchantId = 'M1001' }: { merchantId?: stri
         stream.getTracks().forEach((t) => t.stop())
         setVoice('transcribing')
         try {
-          const result = await api.transcribe(new Blob(chunksRef.current, { type: mime }))
+          const result = await api.transcribe(
+            new Blob(chunksRef.current, { type: mime }),
+            undefined,
+            language === AUTO ? undefined : language,
+          )
           setDraft(result.text)
           spokeRef.current = true
-          setNote(`Heard via ${result.provider} · ${result.latency_ms}ms. Edit it or send.`)
+          if (language === AUTO && result.language) {
+            setDetected(result.language)
+          }
+          const heard = languageName(result.language)
+          setNote(
+            `Heard ${heard ? `${heard} ` : ''}via ${result.provider} · ${result.latency_ms}ms. ` +
+              'Edit it or send.',
+          )
         } catch {
           setNote('Could not transcribe that. Type the issue instead.')
         } finally {
@@ -82,14 +105,68 @@ export function MerchantSupportBar({ merchantId = 'M1001' }: { merchantId?: stri
     }
   }
 
+  function languageName(code: string | null | undefined) {
+    if (!code) return null
+    return languageInfo?.languages.find((l) => l.code === code)?.name ?? code
+  }
+
+  const effective = language === AUTO ? detected : language
+  const chosen = languageInfo?.languages.find((l) => l.code === effective)
+  const select =
+    'rounded-sm border border-line bg-ground px-2 py-1 text-[11px] text-ink outline-none focus:border-line-bright'
+
   return (
     <div className="panel p-4">
-      <div className="mb-2.5 flex items-baseline gap-2">
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
         <span className="micro-label !mb-0">Talk to Saarthi</span>
-        <span className="text-[11px] text-ink-faint">
-          Describe the problem in your own words, in English or Hindi.
+        <span className="flex-1 text-[11px] text-ink-faint">
+          Describe the problem in your own words, in any of these languages.
         </span>
+
+        <select
+          className={select}
+          value={merchant}
+          onChange={(e) => setMerchant(e.target.value)}
+          aria-label="Merchant"
+        >
+          {(merchantInfo?.merchants ?? []).map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.id} · {m.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className={select}
+          value={language}
+          onChange={(e) => {
+            setLanguage(e.target.value)
+            setDetected(null)
+          }}
+          aria-label="Language"
+        >
+          <option value={AUTO}>Auto-detect</option>
+          {(languageInfo?.languages ?? []).map((l) => (
+            <option key={l.code} value={l.code}>
+              {l.endonym} · {l.name}
+              {l.speakable ? '' : ' (text only)'}
+            </option>
+          ))}
+        </select>
       </div>
+
+      {chosen && (
+        <div className="mb-2 flex items-center gap-2">
+          <Mono className="text-[10px] text-ink-faint">
+            {language === AUTO ? 'heard' : 'writing in'} {chosen.endonym}
+          </Mono>
+          {!chosen.speakable && (
+            <Mono className="text-[10px] text-acting">
+              written only — bulbul cannot speak {chosen.name}
+            </Mono>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2">
         <input

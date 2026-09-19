@@ -61,7 +61,9 @@ export function useSpeech(messages: Message[], { enabled }: { enabled: boolean }
       audio.onended = () => setSpeakingId((id) => (id === messageId ? null : id))
       audio.onerror = () => {
         setSpeakingId((id) => (id === messageId ? null : id))
-        setError('Voice unavailable. The message is above.')
+        // 415 lands here too: a language bulbul cannot say. The text is
+        // already on screen, so this is information, not a failure.
+        setError('This message can be read but not spoken.')
       }
 
       void audio.play().catch((reason: DOMException) => {

@@ -80,7 +80,7 @@ async def client(settings, session_factory):
     from fastapi import FastAPI
     from httpx import ASGITransport, AsyncClient
 
-    from saarthi.api import cases, escalations, scenarios, simulation, voice
+    from saarthi.api import cases, escalations, merchants, scenarios, simulation, voice
     from saarthi.api.deps import get_session
     from saarthi.main import create_app
     from saarthi.memory.knowledge import seed_knowledge
@@ -98,6 +98,7 @@ async def client(settings, session_factory):
     app.state.runtime = runtime
     app.include_router(cases.router)
     app.include_router(escalations.router)
+    app.include_router(merchants.router)
     app.include_router(scenarios.router)
     app.include_router(simulation.router)
     app.include_router(voice.router)

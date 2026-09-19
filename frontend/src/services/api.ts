@@ -3,7 +3,9 @@ import type {
   CaseContext,
   Escalation,
   Health,
+  LanguageOption,
   LedgerTransaction,
+  Merchant,
   NewTransaction,
   Message,
   MerchantProfile,
@@ -48,6 +50,7 @@ export const api = {
     merchant_id?: string
     transaction_id?: string | null
     channel?: string
+    language?: string | null
   }) => request<Case>('/api/cases', { method: 'POST', body: JSON.stringify(body) }),
   sendMessage: (id: string, message: string, channel = 'CHAT') =>
     request<Case>(`/api/cases/${id}/message`, {
@@ -114,6 +117,17 @@ export const api = {
     request(`/api/simulation/settlement/${txn}/fail`, { method: 'POST' }),
   runProactive: () => request('/api/simulation/proactive', { method: 'POST' }),
 
+  merchants: () =>
+    request<{ merchants: Merchant[]; max_autonomous_refund_limit: string }>('/api/merchants'),
+  /** How much Saarthi may refund for this merchant without asking a person. */
+  setRefundLimit: (merchantId: string, limit: string, changedBy: string, reason: string) =>
+    request<{ merchant: Merchant; changed: boolean }>(
+      `/api/merchants/${merchantId}/refund-limit`,
+      { method: 'PATCH', body: JSON.stringify({ limit, changed_by: changedBy, reason }) },
+    ),
+  languages: () =>
+    request<{ languages: LanguageOption[]; auto: string }>('/api/voice/languages'),
+
   transactions: (merchantId?: string) =>
     request<{ transactions: LedgerTransaction[] }>(
       `/api/simulation/transactions${merchantId ? `?merchant_id=${merchantId}` : ''}`,
@@ -133,10 +147,16 @@ export const api = {
    */
   speechUrl: (messageId: string) => `${BASE}/api/voice/messages/${messageId}/speech`,
 
-  transcribe: async (blob: Blob, hint?: string): Promise<TranscribeResult> => {
+  transcribe: async (
+    blob: Blob,
+    hint?: string,
+    language?: string,
+  ): Promise<TranscribeResult> => {
     const form = new FormData()
     form.append('audio', blob, 'clip.webm')
     if (hint) form.append('hint', hint)
+    // Omitted entirely means auto-detect.
+    if (language) form.append('language', language)
     const response = await fetch(`${BASE}/api/voice/transcribe`, { method: 'POST', body: form })
     if (!response.ok) throw new Error(`Transcription failed: ${response.status}`)
     return response.json()

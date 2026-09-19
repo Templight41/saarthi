@@ -81,6 +81,14 @@ export function useAlerts() {
   return useQuery({ queryKey: ['alerts'], queryFn: api.alerts, refetchInterval: 3000 })
 }
 
+export function useMerchants() {
+  return useQuery({ queryKey: ['merchants'], queryFn: api.merchants, staleTime: 60000 })
+}
+
+export function useLanguages() {
+  return useQuery({ queryKey: ['languages'], queryFn: api.languages, staleTime: Infinity })
+}
+
 export function useTransactions(merchantId?: string) {
   return useQuery({
     queryKey: ['transactions', merchantId],

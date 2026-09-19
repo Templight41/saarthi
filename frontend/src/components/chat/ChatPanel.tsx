@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Loader2, Mic, Send, Square, Volume2, VolumeX } from 'lucide-react'
 import type { CaseStatus, Message } from '../../types/api'
 import { api } from '../../services/api'
-import { useHealth, useSendMessage } from '../../hooks/queries'
+import { useHealth, useLanguages, useSendMessage } from '../../hooks/queries'
 import { useSpeech } from '../../hooks/useSpeech'
 import { clock } from '../../lib/format'
 import { Button, Empty, Mono, Panel } from '../ui'
@@ -25,11 +25,13 @@ export function ChatPanel({
   caseId,
   messages,
   status,
+  caseLanguage,
   disabled,
 }: {
   caseId: string
   messages: Message[]
   status?: CaseStatus
+  caseLanguage?: string | null
   disabled?: boolean
 }) {
   const [draft, setDraft] = useState('')
@@ -43,7 +45,14 @@ export function ChatPanel({
   const send = useSendMessage(caseId)
 
   const health = useHealth()
+  const { data: languageInfo } = useLanguages()
   const canSpeak = health.data?.tts.enabled ?? true
+
+  /** bulbul says eleven of the languages Sarvam understands. */
+  function speakable(code: string | null | undefined) {
+    if (!code || !languageInfo) return true
+    return languageInfo.languages.find((l) => l.code === code)?.speakable ?? true
+  }
   const speech = useSpeech(messages, { enabled: canSpeak })
 
   const working = Boolean(status && WORKING.includes(status))
@@ -145,7 +154,7 @@ export function ChatPanel({
                     <Mono className="text-[9px] text-ink-faint">voice</Mono>
                   )}
                   <Mono className="text-[10px] text-ink-faint">{clock(m.created_at)}</Mono>
-                  {!inbound && canSpeak && (
+                  {!inbound && canSpeak && speakable(caseLanguage) && (
                     <button
                       type="button"
                       onClick={() => speech.toggle(m.id)}

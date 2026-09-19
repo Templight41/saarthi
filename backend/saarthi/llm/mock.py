@@ -228,9 +228,37 @@ class MockProvider(LLMProvider):
     def _draft(self, ctx: dict) -> MessageDraft:
         stage = ctx.get("stage", "OUTCOME")
         facts = ctx.get("facts", {})
-        txn_id = facts.get("transaction_id", "the transaction")
+        # `.get(key, default)` only defaults when the key is missing, and these
+        # fact dicts set transaction_id to None on purpose when no single
+        # transaction was identified. That put a literal "None" in front of a
+        # merchant, so every read here is `or`-guarded rather than defaulted.
+        txn_id = facts.get("transaction_id") or "your payment"
+        has_txn = bool(facts.get("transaction_id"))
         amount = facts.get("amount")
         amount_str = f"₹{amount}" if amount else "the amount"
+
+        if stage == "FOLLOW_UP":
+            # Answering a question, not announcing an outcome: no claims.
+            if facts.get("awaiting_person"):
+                body = (
+                    f"Your case for {txn_id} is with a colleague for a decision. "
+                    "Nothing has changed on the payment yet, and we will update you "
+                    "as soon as it has."
+                )
+            elif facts.get("settlement_status") == "COMPLETED":
+                body = f"Settlement for {txn_id} has completed. Nothing further is pending."
+            else:
+                eta = facts.get("eta_text") or "shortly"
+                standby = (
+                    " A standby refund is armed, so your customer is covered if it does not."
+                    if facts.get("standby_refund")
+                    else ""
+                )
+                body = (
+                    f"Settlement for {txn_id} is still pending and is expected {eta}."
+                    f"{standby} We are tracking it and will tell you when it lands."
+                )
+            return MessageDraft(body=body, tone="informational", claims=[])
 
         if stage == "INTERIM":
             eta = facts.get("eta_text", "shortly")
@@ -266,10 +294,28 @@ class MockProvider(LLMProvider):
                 claims=["REFUND_COMPLETED"],
             )
         if stage == "ESCALATED":
-            reason = facts.get("reason_text", "it needs a specialist's judgement")
+            reason = facts.get("reason_text") or "it needs a specialist's judgement"
+            candidates = facts.get("candidate_transactions") or []
+            if candidates:
+                named = " or ".join(c["transaction_id"] for c in candidates[:3])
+                return MessageDraft(
+                    body=(
+                        f"I can see more than one payment that matches what you described "
+                        f"({named}), so I have not assumed which one you mean. Reply with the "
+                        f"transaction you are asking about and I'll pick it up, or a colleague "
+                        f"will confirm it with you."
+                    ),
+                    tone="informational",
+                    claims=["ESCALATED"],
+                )
+            opener = (
+                f"I've gathered everything on {txn_id}"
+                if has_txn
+                else "I've gathered everything on your case"
+            )
             return MessageDraft(
                 body=(
-                    f"I've gathered everything on {txn_id}, but I'm not authorised to complete this one on "
+                    f"{opener}, but I'm not authorised to complete this one on "
                     f"my own because {reason}. I've passed it to a specialist with the full transaction "
                     f"history, dispute record and policy position, so they can decide quickly."
                 ),

@@ -25,6 +25,7 @@ from typing import Protocol
 import httpx
 
 from ..config import Settings
+from . import languages
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,9 @@ class TranscribeResult:
 class Transcriber(Protocol):
     name: str
 
-    async def transcribe(self, path: Path, *, hint: str | None = None) -> TranscribeResult: ...
+    async def transcribe(
+        self, path: Path, *, hint: str | None = None, language: str | None = None
+    ) -> TranscribeResult: ...
 
 
 class MockTranscriber:
@@ -80,7 +83,9 @@ class MockTranscriber:
     def __init__(self) -> None:
         self._index = 0
 
-    async def transcribe(self, path: Path, *, hint: str | None = None) -> TranscribeResult:
+    async def transcribe(
+        self, path: Path, *, hint: str | None = None, language: str | None = None
+    ) -> TranscribeResult:
         if hint and hint in self.SCRIPTS:
             text = self.SCRIPTS[hint]
         else:
@@ -115,7 +120,9 @@ class GeminiTranscriber:
         self._model = settings.gemini_transcribe_model
         self._settings = settings
 
-    async def transcribe(self, path: Path, *, hint: str | None = None) -> TranscribeResult:
+    async def transcribe(
+        self, path: Path, *, hint: str | None = None, language: str | None = None
+    ) -> TranscribeResult:
         import time
 
         from google.genai import types
@@ -164,13 +171,18 @@ class SarvamTranscriber:
         self._model = model
         self._language = language
 
-    async def transcribe(self, path: Path, *, hint: str | None = None) -> TranscribeResult:
+    async def transcribe(
+        self, path: Path, *, hint: str | None = None, language: str | None = None
+    ) -> TranscribeResult:
         import time
 
         started = time.monotonic()
         data = {
             "model": self._model,
-            "language_code": self._language,
+            # "unknown" asks Sarvam to work it out and tell us. Pinning a
+            # language here is what made every merchant sound like they were
+            # speaking Indian English.
+            "language_code": languages.for_transcription(language or self._language),
             # Hinglish is the norm, not the exception, for these merchants.
             "mode": "codemix",
         }
@@ -187,7 +199,9 @@ class SarvamTranscriber:
 
         return TranscribeResult(
             text=payload.get("transcript", ""),
-            language=payload.get("language_code", self._language),
+            language=languages.normalise(
+                payload.get("language_code"), default=self._language
+            ),
             duration_seconds=0.0,
             provider=self.name,
             model=self._model,
@@ -205,7 +219,9 @@ class FasterWhisperTranscriber:
         self._model_name = model
         self._model = WhisperModel(model, device="cpu", compute_type=compute_type)
 
-    async def transcribe(self, path: Path, *, hint: str | None = None) -> TranscribeResult:
+    async def transcribe(
+        self, path: Path, *, hint: str | None = None, language: str | None = None
+    ) -> TranscribeResult:
         import time
 
         started = time.monotonic()

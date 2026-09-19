@@ -21,6 +21,7 @@ from ..llm.mock import MockProvider
 from ..schemas.agent import MessageDraft
 from ..services import ledger_service, refund_service
 from ..tools.registry import ToolContext
+from ..voice import languages
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,11 @@ Rules:
 - Use rupee amounts with the ₹ symbol.
 - Two to four sentences. No greetings, no sign-off, no emoji.
 - Say what you did, what is true now, and what happens next.
+- Never name an internal process, state or failure mode. "Identification
+  failed" means nothing to a merchant.
+- Never describe the merchant's account as held, suspended, under verification
+  or restricted unless the facts say so. Inventing a reassuring-sounding
+  explanation for a gap is the worst thing you can do here.
 """
 
 # Claims that require independent backend confirmation before they may be made.
@@ -43,19 +49,6 @@ VERIFIABLE_CLAIMS = {"REFUND_COMPLETED", "SETTLEMENT_COMPLETED"}
 # The template fallback in llm/mock.py is written in English only.
 TEMPLATE_LANGUAGE = "en-IN"
 
-LANGUAGE_NAMES = {
-    "en-IN": "Indian English",
-    "hi-IN": "Hindi, in Devanagari script",
-    "bn-IN": "Bengali",
-    "gu-IN": "Gujarati",
-    "kn-IN": "Kannada",
-    "ml-IN": "Malayalam",
-    "mr-IN": "Marathi",
-    "od-IN": "Odia",
-    "pa-IN": "Punjabi",
-    "ta-IN": "Tamil",
-    "te-IN": "Telugu",
-}
 
 
 async def draft_for_stage(
@@ -101,17 +94,25 @@ async def draft_for_stage(
 
 
 async def _merchant_language(ctx: ToolContext) -> str:
+    """This case's language if it has one, else the merchant's default.
+
+    A merchant served in Hindi can still raise one case in Tamil, so the case
+    wins where it says anything.
+    """
+    chosen = getattr(ctx.case, "language", None)
+    if chosen:
+        return languages.normalise(chosen, default=TEMPLATE_LANGUAGE)
     try:
         merchant = await ledger_service.get_merchant(ctx.session, ctx.case.merchant_id)
     except Exception:  # noqa: BLE001
         return TEMPLATE_LANGUAGE
-    return merchant.language or TEMPLATE_LANGUAGE
+    return languages.normalise(merchant.language, default=TEMPLATE_LANGUAGE)
 
 
 def _system_prompt(language: str) -> str:
     if language == TEMPLATE_LANGUAGE:
         return SYSTEM_PROMPT
-    name = LANGUAGE_NAMES.get(language, language)
+    name = languages.name_of(language)
     return (
         f"{SYSTEM_PROMPT}- Write the message in {name}. Keep ₹ amounts and "
         "transaction ids exactly as given, in Latin script.\n"
@@ -124,10 +125,19 @@ def _downgrade_stage(stage: str) -> str:
 
 
 def _user_prompt(stage: str, facts: dict, language: str) -> str:
+    if stage == "FOLLOW_UP":
+        return (
+            "The merchant asked a follow-up question while their case was still open. "
+            f"Answer it directly from these facts and nothing else: {facts}\n"
+            f"Write it in {languages.name_of(language)}.\n"
+            "Answer the question asked. Do not promise a time the facts do not give, "
+            "and do not say anything has completed unless the facts say so.\n"
+            "Return JSON matching the schema, listing in `claims` only what the facts support."
+        )
     return (
         f"Write the merchant message for stage {stage}.\n"
         f"Only these facts are true: {facts}\n"
-        f"Write it in {LANGUAGE_NAMES.get(language, language)}.\n"
+        f"Write it in {languages.name_of(language)}.\n"
         "Return JSON matching the schema, listing in `claims` only what the facts support."
     )
 

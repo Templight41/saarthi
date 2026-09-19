@@ -49,6 +49,24 @@ class CaseRunner:
             return
         await self._spawn(case_id, self._resume(case_id, trigger))
 
+    async def follow_up(self, case_id: str) -> None:
+        """Answer a merchant question on a case that is already open.
+
+        Takes the same per-case lock as the agent loop, so the answer lands
+        after the current step rather than racing it — two sessions both
+        bumping `case.next_sequence` would otherwise interleave the audit
+        trail.
+        """
+        if self.inline:
+            async with self._lock(case_id):
+                await self.supervisor.answer_follow_up(case_id)
+            return
+        await self._spawn(case_id, self._follow_up(case_id))
+
+    async def _follow_up(self, case_id: str) -> None:
+        async with self._lock(case_id):
+            await self.supervisor.answer_follow_up(case_id)
+
     async def _spawn(self, case_id: str, coro) -> None:
         existing = self._tasks.get(case_id)
         if existing is not None and not existing.done():

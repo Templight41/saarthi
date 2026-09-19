@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .api import cases, escalations, internal, scenarios, simulation, voice
+from .api import cases, escalations, internal, merchants, scenarios, simulation, voice
 from .api.deps import get_runtime, get_session
 from .config import get_settings
 from .database.database import init_db
@@ -101,6 +101,7 @@ def create_app() -> FastAPI:
 
     app.include_router(cases.router)
     app.include_router(escalations.router)
+    app.include_router(merchants.router)
     app.include_router(scenarios.router)
     app.include_router(simulation.router)
     app.include_router(voice.router)
@@ -121,34 +122,6 @@ def create_app() -> FastAPI:
         runtime: SaarthiRuntime = Depends(get_runtime),
     ) -> dict:
         return await compute_metrics(session, runtime.settings)
-
-    @misc.get("/api/merchants/{merchant_id}/profile")
-    async def merchant_profile_endpoint(
-        merchant_id: str, session: AsyncSession = Depends(get_session)
-    ) -> dict:
-        """Operational history, counted from Postgres. Never current payment state."""
-        from .memory.patterns import merchant_profile
-
-        merchant = await session.get(Merchant, merchant_id)
-        if merchant is None:
-            raise HTTPException(404, f"Merchant {merchant_id} not found")
-        return await merchant_profile(session, merchant_id)
-
-    @misc.get("/api/merchants")
-    async def merchants(session: AsyncSession = Depends(get_session)) -> dict:
-        rows = await session.scalars(select(Merchant))
-        return {
-            "merchants": [
-                {
-                    "id": m.id,
-                    "name": m.name,
-                    "risk_level": m.risk_level.value,
-                    "autonomous_refund_limit": str(m.autonomous_refund_limit),
-                    "language": m.language,
-                }
-                for m in rows
-            ]
-        }
 
     app.include_router(misc)
     return app

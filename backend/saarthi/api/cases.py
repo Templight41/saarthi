@@ -21,6 +21,7 @@ from ..database.ids import next_id
 from ..database.models import Case
 from ..runtime import SaarthiRuntime
 from ..services import ops_service
+from ..voice import languages
 from ..workflows.engine import list_runs
 from .deps import get_runtime, get_session
 
@@ -33,6 +34,9 @@ class CreateCaseRequest(BaseModel):
     transaction_id: str | None = None
     channel: MessageChannel = MessageChannel.CHAT
     scenario: str | None = None
+    #: Overrides the merchant's default for this case. Usually what the
+    #: merchant picked, or what the transcriber heard them speaking.
+    language: str | None = None
 
 
 class MessageRequest(BaseModel):
@@ -61,6 +65,7 @@ class CaseResponse(BaseModel):
     wait_reason: str | None
     resolution: str | None
     pending_escalation_id: str | None = None
+    language: str | None
     original_message: str
     created_at: str
     updated_at: str
@@ -88,6 +93,7 @@ def _serialise(case: Case, pending_escalation_id: str | None = None) -> CaseResp
         wait_reason=case.wait_reason,
         resolution=case.resolution.value if case.resolution else None,
         pending_escalation_id=pending_escalation_id,
+        language=case.language,
         original_message=case.original_message,
         created_at=case.created_at.isoformat(),
         updated_at=case.updated_at.isoformat(),
@@ -120,6 +126,7 @@ async def create_case(
         ),
         original_message=payload.message,
         scenario=payload.scenario,
+        language=languages.normalise(payload.language, default=None) if payload.language else None,
     )
     session.add(case)
     await session.flush()
@@ -230,9 +237,13 @@ async def post_message(
     )
     await session.commit()
 
-    # A parked case is driven by a human or a workflow, not by chatter.
+    # Chatter must not redirect the plan — a parked case is driven by a human
+    # or a workflow. But it must still get an answer: a question that is only
+    # filed and never replied to is the worst of both.
     if case.status == CaseStatus.RECEIVED:
         await runtime.runner.start(case.id)
+    else:
+        await runtime.runner.follow_up(case.id)
     await session.refresh(case)
     return await _with_escalation(session, runtime, case)
 

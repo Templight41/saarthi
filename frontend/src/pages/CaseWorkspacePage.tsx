@@ -78,6 +78,7 @@ export function CaseWorkspacePage() {
               caseId={caseId}
               messages={messages ?? []}
               status={kase.status}
+              caseLanguage={kase.language}
               disabled={kase.owner === 'HUMAN'}
             />
           )}

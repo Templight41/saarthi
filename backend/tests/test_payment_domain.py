@@ -22,7 +22,7 @@ from saarthi.database.enums import (
     SettlementStatus,
 )
 from saarthi.database.models import Merchant, Settlement, Transaction
-from saarthi.services import ledger_service, notification_service
+from saarthi.services import ledger_service, notification_service, ops_service
 from saarthi.services.providers import IMPLEMENTATIONS
 
 pytestmark = pytest.mark.asyncio
@@ -433,3 +433,249 @@ async def test_an_explicit_id_always_wins(session):
         session, "M9100", "Something is wrong with TXN_DISPUTED", hint=None
     )
     assert (resolved, how) == ("TXN_DISPUTED", "REGEX")
+
+
+# --------------------------------------------------------------------------
+# Languages: understood is a bigger set than speakable
+# --------------------------------------------------------------------------
+def test_every_speakable_language_is_also_understood():
+    from saarthi.voice import languages
+
+    assert languages.SPEAKABLE < languages.UNDERSTOOD
+    assert len(languages.SPEAKABLE) == 11
+
+
+def test_a_language_saarthi_can_write_but_not_say():
+    from saarthi.voice import languages
+
+    assert languages.is_understood("as-IN") is True
+    assert languages.is_speakable("as-IN") is False
+    assert languages.is_speakable("ta-IN") is True
+
+
+def test_an_unknown_language_becomes_auto_detect_rather_than_an_error():
+    from saarthi.voice import languages
+
+    assert languages.for_transcription(None) == languages.AUTO
+    assert languages.for_transcription("") == languages.AUTO
+    assert languages.for_transcription("fr-FR") == languages.AUTO
+    assert languages.for_transcription("ta-IN") == "ta-IN"
+
+
+async def test_the_case_language_overrides_the_merchants_default(session):
+    """A merchant served in Hindi can still raise one case in Tamil."""
+    from saarthi.agent.messaging import _merchant_language
+    from saarthi.database.models import Case
+    from saarthi.tools.registry import ToolContext
+
+    merchant = await _merchant(session, "M9200")
+    merchant.language = "hi-IN"
+    await session.flush()
+
+    case = Case(id="CASE-L1", merchant_id="M9200", original_message="x")
+    ctx = ToolContext(session=session, case=case, simulation=None, runtime=None)
+
+    assert await _merchant_language(ctx) == "hi-IN"
+
+    case.language = "ta-IN"
+    assert await _merchant_language(ctx) == "ta-IN"
+
+    # Something neither provider knows falls back rather than reaching bulbul.
+    case.language = "fr-FR"
+    assert await _merchant_language(ctx) == "en-IN"
+
+
+async def test_speech_refuses_a_language_bulbul_cannot_say(client):
+    """415, not a wrong-voice reading of the text."""
+    created = await client.post(
+        "/api/cases",
+        json={
+            "message": "Can you confirm whether TXN_NORMAL_SUCCESS went through fine?",
+            "transaction_id": "TXN_NORMAL_SUCCESS",
+        },
+    )
+    case_id = created.json()["id"]
+    messages = (await client.get(f"/api/cases/{case_id}/messages")).json()["messages"]
+    outbound = next(m for m in messages if m["direction"] == "OUTBOUND")
+
+    async with client.runtime.session_factory() as db:
+        row = await ops_service.get_message(db, outbound["id"])
+        row.meta = {**row.meta, "language": "as-IN"}
+        await db.commit()
+
+    response = await client.get(f"/api/voice/messages/{outbound['id']}/speech")
+    assert response.status_code == 415
+    assert "Assamese" in response.json()["detail"]
+
+
+async def test_the_language_catalogue_is_served(client):
+    body = (await client.get("/api/voice/languages")).json()
+    codes = {lang["code"] for lang in body["languages"]}
+
+    assert {"en-IN", "hi-IN", "ta-IN", "as-IN", "sat-IN"} <= codes
+    assert body["auto"] == "unknown"
+    # The selector needs to know which ones come with audio.
+    assert any(lang["speakable"] for lang in body["languages"])
+    assert any(not lang["speakable"] for lang in body["languages"])
+
+
+# --------------------------------------------------------------------------
+# Merchants do not write in English
+# --------------------------------------------------------------------------
+def test_hinglish_and_devanagari_are_understood():
+    """A live case read "customer के bank से cut हुआ है" as describing nothing,
+    because every keyword list was English-only."""
+    from saarthi.agent.identify import topics_in
+
+    hinglish = (
+        "customer ने 4800 का transaction किया है but bank में नहीं आया है "
+        "लेकिन customer के bank से cut हुआ है।"
+    )
+    assert topics_in(hinglish) == {"PENDING"}
+    assert topics_in("ग्राहक ने रिफंड मांगा है") == {"REFUND"}
+    assert topics_in("सामान खराब निकला") == {"DISPUTE"}
+    assert topics_in("paisa nahi aaya") == {"PENDING"}
+    # The English word inside a Hindi sentence still counts.
+    assert "PENDING" in topics_in("payment cut हो गया")
+
+
+async def test_two_payments_of_the_same_amount_are_narrowed_not_abandoned(session):
+    """The amount is still the best signal even when it is not unique."""
+    from datetime import timedelta
+
+    from saarthi.agent.identify import resolve_transaction
+    from saarthi.database.database import utcnow
+
+    await _merchant(session, "M9300")
+    now = utcnow()
+    for index, (txn_id, pay, stl) in enumerate(
+        [
+            ("TXN_SAME_PENDING", PaymentStatus.PAYMENT_PENDING, SettlementStatus.PENDING),
+            ("TXN_SAME_DONE", PaymentStatus.SUCCESS, SettlementStatus.COMPLETED),
+        ]
+    ):
+        session.add(
+            Transaction(
+                id=txn_id,
+                merchant_id="M9300",
+                amount=Decimal("4800.00"),
+                payment_status=pay,
+                customer_debited=True,
+                created_at=now - timedelta(minutes=index),
+            )
+        )
+        await session.flush()
+        session.add(
+            Settlement(id=f"STL-93{index}", transaction_id=txn_id, status=stl, expected_at=now)
+        )
+    await session.flush()
+
+    resolved, how, _ = await resolve_transaction(
+        session, "M9300", "customer ने 4800 का transaction किया है but bank में नहीं आया है"
+    )
+    assert (resolved, how) == ("TXN_SAME_PENDING", "AMOUNT_NARROWED")
+
+
+async def test_genuinely_identical_payments_still_ask(session):
+    """Two unresolved payments for the same amount are not guessable."""
+    from saarthi.agent.identify import resolve_transaction
+    from saarthi.database.database import utcnow
+
+    await _merchant(session, "M9301")
+    now = utcnow()
+    for index, txn_id in enumerate(["TXN_TWIN_A", "TXN_TWIN_B"]):
+        session.add(
+            Transaction(
+                id=txn_id,
+                merchant_id="M9301",
+                amount=Decimal("4800.00"),
+                payment_status=PaymentStatus.PAYMENT_PENDING,
+                customer_debited=True,
+            )
+        )
+        await session.flush()
+        session.add(
+            Settlement(
+                id=f"STL-94{index}",
+                transaction_id=txn_id,
+                status=SettlementStatus.PENDING,
+                expected_at=now,
+            )
+        )
+    await session.flush()
+
+    resolved, how, candidates = await resolve_transaction(
+        session, "M9301", "4800 का payment नहीं आया"
+    )
+    assert resolved is None and how == "AMBIGUOUS"
+    assert set(candidates) == {"TXN_TWIN_A", "TXN_TWIN_B"}
+
+
+def test_the_drafting_prompt_forbids_inventing_account_states():
+    """A live reply said "your account verification is currently on hold",
+    which was not true of anything."""
+    from saarthi.agent.messaging import SYSTEM_PROMPT
+
+    assert "under verification" in SYSTEM_PROMPT
+    assert "Never name an internal process" in SYSTEM_PROMPT
+
+
+# --------------------------------------------------------------------------
+# Nothing internal reaches the merchant
+# --------------------------------------------------------------------------
+async def test_no_template_can_put_none_in_front_of_a_merchant():
+    """A live reply opened "I've gathered everything on None".
+
+    `facts.get("transaction_id", "the transaction")` looks safe, but the
+    default only applies when the key is absent — and the escalation facts set
+    it to None deliberately when no single transaction was identified.
+    """
+    from saarthi.llm.mock import MockProvider
+    from saarthi.schemas.agent import MessageDraft
+
+    provider = MockProvider()
+    stages = [
+        "FOLLOW_UP",
+        "INTERIM",
+        "SETTLED",
+        "REFUNDED",
+        "ESCALATED",
+        "REJECTED",
+        "NO_ISSUE",
+        "OUTCOME",
+    ]
+    empty = {"transaction_id": None, "amount": None, "refund_id": None, "reason_text": None}
+
+    for stage in stages:
+        for facts in ({}, empty):
+            draft = await provider.complete_json(
+                system="",
+                user="",
+                schema=MessageDraft,
+                context={"stage": stage, "facts": facts},
+            )
+            assert "None" not in draft.body, f"{stage} with {facts}: {draft.body}"
+            assert "null" not in draft.body.lower(), f"{stage}: {draft.body}"
+
+
+async def test_an_ambiguous_escalation_names_the_candidates():
+    from saarthi.llm.mock import MockProvider
+    from saarthi.schemas.agent import MessageDraft
+
+    draft = await MockProvider().complete_json(
+        system="",
+        user="",
+        schema=MessageDraft,
+        context={
+            "stage": "ESCALATED",
+            "facts": {
+                "transaction_id": None,
+                "candidate_transactions": [
+                    {"transaction_id": "TXN19931", "amount": "4800.00"},
+                    {"transaction_id": "TXN20000", "amount": "4800.00"},
+                ],
+            },
+        },
+    )
+    assert "TXN19931" in draft.body and "TXN20000" in draft.body
+    assert "None" not in draft.body

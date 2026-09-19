@@ -51,7 +51,7 @@ from ..verification.verifier import (
 )
 from .context import CaseContext, build_context
 from .events import EventType, record_event
-from .planner import REPLAN_REFUND_CONDITION_MET, REPLAN_SETTLEMENT_COMPLETED
+from .planner import REPLAN_REFUND_CONDITION_MET, REPLAN_SETTLEMENT_COMPLETED, _eta_text
 from .state_machine import transition
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,8 @@ class CaseRunContext:
     failure: ActionFailure | None = None
     replan_reason: str | None = None
     escalation_reason: EscalationReason | None = None
+    #: When identification could not choose, what it was choosing between.
+    identification_candidates: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -131,6 +133,56 @@ class Supervisor:
     # ------------------------------------------------------------------
     async def run_case(self, case_id: str, *, trigger: str = "NEW_MESSAGE") -> None:
         await self._loop(CaseRunContext(case_id=case_id, trigger=trigger))
+
+    async def answer_follow_up(self, case_id: str) -> bool:
+        """The merchant asked something while the case was still open.
+
+        This answers and nothing else. It does not plan, act, change the case
+        status or clear a wait: "a parked case is driven by a human or a
+        workflow, not by chatter" is a rule about *actions*, and it was being
+        applied to questions too, so a merchant asking "how long will this
+        take" got silence.
+
+        The reply is drafted from state re-read now, through the same claims
+        guard as any other merchant message, so it cannot promise anything the
+        ledger does not support.
+        """
+        async with self.session_factory() as session:
+            case = await session.get(Case, case_id)
+            if case is None or case.status == CaseStatus.RESOLVED:
+                return False
+            if case.owner == CaseOwner.HUMAN:
+                # A person has taken this over. Saarthi does not talk over them.
+                return False
+
+            ctx = CaseRunContext(case_id=case_id, trigger="MERCHANT_FOLLOW_UP")
+            ctx.context = await build_context(session, case)
+            await self._notify(
+                session,
+                case,
+                ctx,
+                stage="FOLLOW_UP",
+                facts=self._follow_up_facts(case, ctx.context),
+            )
+            await session.commit()
+            return True
+
+    def _follow_up_facts(self, case: Case, ctx: CaseContext) -> dict:
+        txn = ctx.transaction or {}
+        settlement = ctx.settlement or {}
+        scheduled = [r for r in ctx.refunds if r.get("status") == "SCHEDULED"]
+        return {
+            "question": case.original_message,
+            "transaction_id": txn.get("id"),
+            "amount": txn.get("amount"),
+            "payment_status": txn.get("payment_status"),
+            "settlement_status": settlement.get("status"),
+            "eta_text": _eta_text(ctx),
+            "overdue": (ctx.settlement_eta or {}).get("overdue"),
+            "standby_refund": scheduled[0] if scheduled else None,
+            "case_status": case.status.value,
+            "awaiting_person": case.status == CaseStatus.ESCALATED,
+        }
 
     async def resume_case(self, case_id: str, *, trigger: str) -> None:
         async with self.session_factory() as session:
@@ -220,6 +272,7 @@ class Supervisor:
         )
         if resolved is None:
             ctx.escalation_reason = EscalationReason.IDENTIFICATION_FAILED
+            ctx.identification_candidates = candidates
             await record_event(
                 session,
                 case,
@@ -793,6 +846,7 @@ class Supervisor:
             decision=primary_decision,
             pending_action=primary_step,
             context_snapshot={
+                "identification_candidates": ctx.identification_candidates,
                 "merchant": ctx.context.merchant,
                 "transaction": ctx.context.transaction,
                 "settlement": ctx.context.settlement,
@@ -808,6 +862,24 @@ class Supervisor:
             "amount": str(amount) if amount else None,
             "reason_text": _humanise(reason.value),
         }
+        if reason is EscalationReason.IDENTIFICATION_FAILED and ctx.identification_candidates:
+            # "The merchant identification process failed" is internal jargon,
+            # and left to fill the gap a model invents an account state to
+            # explain it. Say the true, ordinary thing instead: there is more
+            # than one payment this could be, and name them.
+            shortlist = await self._describe_candidates(
+                session, ctx.identification_candidates
+            )
+            facts = {
+                "transaction_id": None,
+                "amount": None,
+                "candidate_transactions": shortlist,
+                "reason_text": (
+                    "more than one of your recent payments matches what you described, "
+                    "so we have not assumed which one you mean"
+                ),
+            }
+
         if reason is EscalationReason.NO_AUTHORITATIVE_RECORD:
             # The transaction that got identified is not what this case is
             # about. Naming it here would tell the merchant their real pending
@@ -993,6 +1065,24 @@ class Supervisor:
             result={"id": message.id},
         )
         return message
+
+    async def _describe_candidates(self, session, ids: list[str]) -> list[dict]:
+        """Enough for a merchant to recognise which payment is theirs."""
+        described: list[dict] = []
+        for txn_id in ids[:5]:
+            try:
+                txn = await ledger_service.get_transaction(session, txn_id)
+            except EnterpriseAPIError:
+                continue
+            described.append(
+                {
+                    "transaction_id": txn.id,
+                    "amount": str(txn.amount),
+                    "payment_status": txn.payment_status.value,
+                    "description": txn.description,
+                }
+            )
+        return described
 
     async def _policy_context(self, session, case: Case, ctx: CaseRunContext) -> PolicyContext:
         merchant = await ledger_service.get_merchant(session, case.merchant_id)

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.models import Case, Merchant, Message
 from ..runtime import SaarthiRuntime
 from ..services import ops_service
+from ..voice import languages
 from ..voice.synthesizer import SynthesisError, SynthesisResult
 from ..voice.transcriber import to_wav
 from .deps import get_runtime, get_session
@@ -49,10 +50,21 @@ def _transcriber_for(runtime: SaarthiRuntime):
     return runtime.get_transcriber()
 
 
+@router.get("/languages")
+async def list_languages() -> dict:
+    """Everything the transcriber understands, and which of those can be spoken.
+
+    Two different capabilities: Sarvam understands two dozen Indian languages
+    and bulbul says eleven of them, so `speakable` is not decoration.
+    """
+    return {"languages": languages.catalogue(), "auto": languages.AUTO}
+
+
 @router.post("/transcribe")
 async def transcribe(
     audio: UploadFile = File(...),
     hint: str | None = Form(None),
+    language: str | None = Form(None),
     runtime: SaarthiRuntime = Depends(get_runtime),
 ) -> dict:
     payload = await audio.read()
@@ -71,7 +83,7 @@ async def transcribe(
         transcriber = _transcriber_for(runtime)
         wav = to_wav(source)
         converted = wav if wav != source else None
-        result = await transcriber.transcribe(wav, hint=hint)
+        result = await transcriber.transcribe(wav, hint=hint, language=language)
         return result.as_dict()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -202,6 +214,12 @@ async def speak_message(
         raise HTTPException(503, "Speech output is switched off")
 
     language = await _language_for(session, message, runtime)
+    if not languages.is_speakable(language):
+        # Reading Assamese with an English reader is worse than staying quiet.
+        # The merchant still has the text; the UI hides the speaker button.
+        raise HTTPException(
+            415, f"{languages.name_of(language)} can be written but not spoken"
+        )
     key = _cache_key(message, synthesizer, language)
 
     cached = _audio_cache.get(key)

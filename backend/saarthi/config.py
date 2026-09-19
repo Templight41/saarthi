@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal
 
@@ -92,6 +93,10 @@ class Settings(BaseSettings):
     agent_max_steps: int = 60
     recovery_max_attempts: int = 3
     refund_grace_minutes: int = 30
+    # A ceiling on what any merchant's autonomous refund limit can be set to
+    # from the dashboard. Without one, raising the limit far enough turns
+    # every escalation into an autonomous action.
+    max_autonomous_refund_limit: Decimal = Decimal("50000.00")
 
     # --- Simulation ---
     fail_first_refund: bool = False

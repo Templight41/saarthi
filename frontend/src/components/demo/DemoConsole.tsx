@@ -4,6 +4,7 @@ import { CheckCircle2, PlayCircle, RotateCcw, Siren, XCircle, Zap } from 'lucide
 import { api } from '../../services/api'
 import { useRefreshAll, useScenarios } from '../../hooks/queries'
 import { Button, Chip, MicroLabel, Mono } from '../ui'
+import { MerchantAuthority } from './MerchantAuthority'
 import { TransactionLab } from './TransactionLab'
 
 /**
@@ -129,6 +130,10 @@ export function DemoConsole({ onDone }: { onDone?: () => void }) {
             <Zap size={12} className="text-acting" /> Fail the next refund once
           </span>
         </Button>
+      </div>
+
+      <div className="border-t border-line pt-4">
+        <MerchantAuthority />
       </div>
 
       <div className="border-t border-line pt-4">

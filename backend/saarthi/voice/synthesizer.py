@@ -26,30 +26,13 @@ from typing import Protocol
 import httpx
 
 from ..config import Settings
+from .languages import DEFAULT_LANGUAGE
+from .languages import SPEAKABLE as SUPPORTED_LANGUAGES
 
 logger = logging.getLogger(__name__)
 
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech"
 
-# The languages bulbul speaks. Anything else is spoken in Indian English rather
-# than failing: a merchant hearing the right words in the wrong accent is a far
-# better outcome than silence.
-SUPPORTED_LANGUAGES = frozenset(
-    {
-        "bn-IN",
-        "en-IN",
-        "gu-IN",
-        "hi-IN",
-        "kn-IN",
-        "ml-IN",
-        "mr-IN",
-        "od-IN",
-        "pa-IN",
-        "ta-IN",
-        "te-IN",
-    }
-)
-DEFAULT_LANGUAGE = "en-IN"
 
 
 class SynthesisError(RuntimeError):
@@ -92,6 +75,9 @@ class Synthesizer(Protocol):
 
 
 def normalise_language(language: str | None) -> str:
+    """Last-resort guard. Callers check `languages.is_speakable` first, so an
+    unspeakable language should never reach here — reaching it means a message
+    would be read in the wrong voice, which is worth a warning."""
     if not language:
         return DEFAULT_LANGUAGE
     if language in SUPPORTED_LANGUAGES:

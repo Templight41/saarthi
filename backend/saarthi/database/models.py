@@ -178,6 +178,9 @@ class Case(Base):
     human_override: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     resolution: Mapped[Resolution | None] = mapped_column(portable_enum(Resolution), nullable=True)
     scenario: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Overrides the merchant default for this case only. Set from what the
+    # merchant chose, or from what the transcriber heard.
+    language: Mapped[str | None] = mapped_column(String(8), nullable=True)
     next_sequence: Mapped[int] = mapped_column(Integer, default=0)
     first_action_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, index=True)

@@ -36,14 +36,29 @@ TXN_PATTERN = re.compile(r"\b(TXN[A-Z0-9_]+)\b", re.IGNORECASE)
 _AMOUNT = re.compile(r"(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d{1,2})?)", re.IGNORECASE)
 _BARE_AMOUNT = re.compile(r"\b(\d{3,7}(?:,\d{3})*(?:\.\d{1,2})?)\b")
 
+# Merchants write the way they speak: Devanagari and English in one sentence,
+# often transliterated. Matching only English words meant "customer के bank से
+# cut हुआ है" registered as describing nothing at all. Devanagari has no \b
+# word boundary that Python's re respects the way it does for Latin, so these
+# patterns deliberately do not anchor on one.
 _DISPUTE_WORDS = re.compile(
-    r"\b(dispute|quality|defect|damaged|faulty|broken|not as described|complain)\b",
+    r"(dispute|quality|defect|damaged|faulty|broken|not as described|complain"
+    r"|kharab|kharaab|tuta|toota|shikayat"
+    r"|खराब|ख़राब|टूट|शिकायत|गुणवत्ता|डैमेज)",
     re.IGNORECASE,
 )
-_REFUND_WORDS = re.compile(r"\b(refund|return|cancel|cancelled|money back)\b", re.IGNORECASE)
+_REFUND_WORDS = re.compile(
+    r"(refund|return|cancel|cancelled|money back"
+    r"|wapas|vapas|paisa wapas"
+    r"|रिफंड|रिफ़ंड|वापस|वापिस|रद्द|कैंसिल|लौटा)",
+    re.IGNORECASE,
+)
 _PENDING_WORDS = re.compile(
-    r"\b(pending|failed|stuck|not confirmed|deducted|debited|didn'?t go through|"
-    r"settle|settlement|payout|not received|not credited)\b",
+    r"(pending|failed|stuck|not confirmed|deducted|debited|didn'?t go through"
+    r"|settle|settlement|payout|not received|not credited|\bcut\b|not come|hasn'?t come"
+    r"|nahi aaya|nahin aaya|nahi mila|kat gaya|kat gaye|atka|atak|paisa nahi"
+    r"|नहीं आया|नहीं आये|नहीं आए|नहीं मिला|नहीं पहुंच|नहीं हुआ|कट गया|कट गये|कट गए"
+    r"|कटा|कटे|अटक|पेंडिंग|फेल|डेबिट|सेटलमेंट|जमा नहीं|बाकी)",
     re.IGNORECASE,
 )
 
@@ -132,6 +147,18 @@ async def resolve_transaction(
             "AMBIGUOUS",
             [chosen.txn.id, *[f.txn.id for f in rival]][:5],
         )
+
+    # 1b. Several transactions share that amount. Narrow inside them rather
+    #     than abandoning the strongest signal we have: first by what the
+    #     merchant described, then by which are still unresolved.
+    if len(by_amount) > 1:
+        narrowed = [f for f in by_amount if _matches_topic(f, topics)] if topics else []
+        if len(narrowed) != 1:
+            narrowed = [f for f in by_amount if f.unsettled]
+        if len(narrowed) == 1:
+            return narrowed[0].txn.id, "AMOUNT_NARROWED", [narrowed[0].txn.id]
+        shortlist = narrowed or by_amount
+        return None, "AMBIGUOUS", [f.txn.id for f in shortlist][:5]
 
     # 2. They described a kind of problem, and exactly one transaction is in
     #    that state.

@@ -60,6 +60,7 @@ export interface Case {
   wait_reason: string | null
   resolution: Resolution | null
   pending_escalation_id: string | null
+  language: string | null
   original_message: string
   created_at: string
   updated_at: string
@@ -383,4 +384,32 @@ export interface NewTransaction {
   transaction_id?: string | null
   settlement_status?: string | null
   announce_on_soundbox?: boolean
+}
+
+export interface LanguageOption {
+  code: string
+  name: string
+  endonym: string
+  /** Sarvam understands every language listed; bulbul speaks only some. */
+  speakable: boolean
+}
+
+export interface RefundLimitChange {
+  at: string
+  from: string
+  to: string
+  changed_by: string
+  reason: string
+}
+
+export interface Merchant {
+  id: string
+  name: string
+  risk_level: Risk
+  autonomous_refund_limit: string
+  currency: string
+  language: string
+  limit_changed_at: string | null
+  limit_changed_by: string | null
+  limit_history: RefundLimitChange[]
 }
