@@ -22,15 +22,20 @@ def build_provider(settings: Settings) -> LLMProvider:
         return mock
 
     if settings.llm_provider == "gemini":
-        if not settings.gemini_api_key:
-            logger.warning("LLM_PROVIDER=gemini but GEMINI_API_KEY is empty; using mock provider")
+        if not settings.gemini_configured:
+            missing = (
+                "GOOGLE_CLOUD_PROJECT" if settings.gemini_backend == "vertex" else "GEMINI_API_KEY"
+            )
+            logger.warning(
+                "LLM_PROVIDER=gemini with backend %s but %s is empty; using mock provider",
+                settings.gemini_backend,
+                missing,
+            )
             return mock
         from .gemini import GeminiProvider
 
         try:
-            primary = GeminiProvider(
-                settings.gemini_api_key, settings.gemini_model, settings.llm_timeout_seconds
-            )
+            primary = GeminiProvider(settings)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Gemini provider could not be constructed (%s); using mock", exc)
             return mock

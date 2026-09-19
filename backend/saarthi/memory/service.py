@@ -352,11 +352,11 @@ def _maybe_int(value) -> int | None:
 def build_memory(settings: Settings) -> SaarthiMemory:
     # pgvector is used when embeddings are available; the local index is the
     # default and is always the fallback.
-    if settings.memory_provider == "pgvector" and settings.gemini_api_key:
+    if settings.memory_provider == "pgvector" and settings.gemini_configured:
         from .pgvector_memory import PgVectorMemory
 
         return PgVectorMemory(settings, LocalIndexMemory(settings))
-    if settings.memory_provider == "auto" and settings.gemini_api_key and not settings.is_sqlite:
+    if settings.memory_provider == "auto" and settings.gemini_configured and not settings.is_sqlite:
         from .pgvector_memory import PgVectorMemory
 
         return PgVectorMemory(settings, LocalIndexMemory(settings))

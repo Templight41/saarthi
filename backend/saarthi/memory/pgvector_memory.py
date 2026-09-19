@@ -49,9 +49,11 @@ class PgVectorMemory:
 
     def _genai(self):
         if self._client is None:
-            from google import genai
+            # Same builder as the chat provider, so embeddings and generation
+            # always go to the same backend.
+            from ..llm.gemini import build_genai_client
 
-            self._client = genai.Client(api_key=self.settings.gemini_api_key)
+            self._client = build_genai_client(self.settings)
         return self._client
 
     async def embed(self, content: str, *, task_type: str = "RETRIEVAL_DOCUMENT") -> list[float]:

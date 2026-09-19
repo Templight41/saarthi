@@ -25,8 +25,13 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     llm_provider: Literal["gemini", "sarvam", "mock"] = "mock"
+    # "vertex" authenticates with Application Default Credentials against a
+    # Google Cloud project; "developer" uses an AI Studio API key.
+    gemini_backend: Literal["vertex", "developer"] = "developer"
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.5-flash"
+    google_cloud_project: str = ""
+    google_cloud_location: str = "global"
     sarvam_api_key: str = ""
     sarvam_model: str = "sarvam-105b"
     llm_timeout_seconds: float = 20.0
@@ -72,6 +77,13 @@ class Settings(BaseSettings):
     metrics_timezone: str = "Asia/Kolkata"
     human_hours_saved_per_case: float = 0.75
     human_hours_saved_per_approved_case: float = 0.25
+
+    @property
+    def gemini_configured(self) -> bool:
+        """Vertex needs a project; the developer API needs a key."""
+        if self.gemini_backend == "vertex":
+            return bool(self.google_cloud_project)
+        return bool(self.gemini_api_key)
 
     @property
     def is_sqlite(self) -> bool:

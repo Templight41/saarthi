@@ -62,7 +62,7 @@ bar shows which one is actually live, so the demo is never dishonest about it.
 
 | Layer | Real | Fallback (default) | Switch |
 |---|---|---|---|
-| Language model | Gemini, or Sarvam | rule-based provider | `LLM_PROVIDER` |
+| Language model | Gemini on Vertex AI or AI Studio, or Sarvam | rule-based provider | `LLM_PROVIDER` |
 | Memory | pgvector + Gemini embeddings | keyword index over the same documents | `MEMORY_PROVIDER` |
 | Workflows | n8n Wait and Schedule nodes | in-process asyncio loops | `WORKFLOW_ENGINE` |
 | Speech to text | Sarvam, or faster-whisper | scripted transcripts | `VOICE_PROVIDER` |
@@ -70,6 +70,29 @@ bar shows which one is actually live, so the demo is never dishonest about it.
 
 A real provider that fails at runtime degrades to the fallback and writes an `LLM_FALLBACK` event, so
 the degradation shows up on the timeline instead of silently changing behaviour.
+
+### Using Gemini on Vertex AI
+
+The same SDK reaches two different backends, and `GEMINI_BACKEND` picks which.
+
+```bash
+gcloud auth application-default login
+```
+
+```ini
+LLM_PROVIDER=gemini
+GEMINI_BACKEND=vertex
+GOOGLE_CLOUD_PROJECT=your-project
+GOOGLE_CLOUD_LOCATION=global        # Gemini 3.x is served globally; regional endpoints 404
+```
+
+Vertex authenticates with Application Default Credentials, so **no API key is
+involved**: quota, billing, audit logging and data residency all follow the Google Cloud project.
+For an AI Studio key instead, set `GEMINI_BACKEND=developer` and `GEMINI_API_KEY`.
+
+Embeddings follow the same setting, so chat and memory never end up on different backends. The
+health endpoint reports the live backend as `gemini/vertex` or `gemini/developer`, and a
+misconfigured Vertex setup degrades to the deterministic provider rather than failing at startup.
 
 ---
 
