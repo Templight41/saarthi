@@ -30,10 +30,24 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     logging.basicConfig(level=settings.log_level)
 
+    # Refuse to start on stand-ins. Discovering that mid-demo is worse than
+    # not starting at all.
+    problems = settings.validate_providers()
+    if problems:
+        raise RuntimeError(
+            "Refusing to start on simulated providers:\n  - "
+            + "\n  - ".join(problems)
+            + "\n\nFix the configuration, or set ALLOW_SIMULATED=true to permit them."
+        )
+
     runtime = SaarthiRuntime.build(settings)
+    logger.info("Providers: %s", runtime.health())
     app.state.runtime = runtime
 
     await init_db(runtime.engine)
+    prepare = getattr(runtime.memory, "ensure_schema", None)
+    if prepare is not None:
+        await prepare(runtime.session_factory)
     if settings.seed_on_startup:
         async with runtime.session_factory() as session:
             existing = await session.scalar(select(func.count()).select_from(Merchant))
@@ -83,8 +97,7 @@ def create_app() -> FastAPI:
     async def health(runtime: SaarthiRuntime = Depends(get_runtime)) -> dict:
         info = runtime.health()
         if runtime.workflows is not None:
-            info["workflows"] = await runtime.workflows.health()
-        info["voice"] = runtime.settings.voice_provider
+            info["workflows"] = {**info["workflows"], **await runtime.workflows.health()}
         return info
 
     @misc.get("/api/metrics")

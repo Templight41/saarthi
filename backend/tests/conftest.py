@@ -17,6 +17,9 @@ def settings(tmp_path) -> Settings:
     # A file-backed SQLite DB, not :memory: — each pooled aiosqlite connection
     # would otherwise get its own private database.
     return Settings(
+        # Tests must be deterministic, offline and free. This is the one place
+        # stand-ins are legitimate, and it is opted into explicitly.
+        allow_simulated=True,
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
         llm_provider="mock",
         memory_provider="local",

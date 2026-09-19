@@ -237,10 +237,14 @@ def build_workflow_engine(settings: Settings) -> BaseWorkflowEngine:
     if settings.workflow_engine == "n8n":
         return N8nWorkflowEngine(settings)
     if settings.workflow_engine == "local":
+        if not settings.allow_simulated:
+            raise RuntimeError(
+                "WORKFLOW_ENGINE=local runs workflows in-process rather than in n8n. "
+                "Use n8n, or set ALLOW_SIMULATED=true."
+            )
         return LocalWorkflowEngine(settings)
-    # auto: prefer local, because an unreachable n8n should never be discovered
-    # for the first time during a demo.
-    return LocalWorkflowEngine(settings)
+    # auto: prefer n8n, and let its per-run fallback handle a transient outage.
+    return N8nWorkflowEngine(settings)
 
 
 async def list_runs(session: AsyncSession, case_id: str | None = None) -> list[WorkflowRun]:

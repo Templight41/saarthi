@@ -19,6 +19,11 @@ def build_provider(settings: Settings) -> LLMProvider:
     mock = MockProvider()
 
     if settings.llm_provider == "mock":
+        if not settings.allow_simulated:
+            raise RuntimeError(
+                "LLM_PROVIDER=mock is refused. Set a real provider, or set "
+                "ALLOW_SIMULATED=true to permit deterministic stand-ins."
+            )
         return mock
 
     if settings.llm_provider == "gemini":
@@ -31,18 +36,26 @@ def build_provider(settings: Settings) -> LLMProvider:
                 settings.gemini_backend,
                 missing,
             )
+            if not settings.allow_simulated:
+                raise RuntimeError(f"Gemini is selected but unusable: {missing} is empty")
             return mock
         from .gemini import GeminiProvider
 
         try:
             primary = GeminiProvider(settings)
         except Exception as exc:  # noqa: BLE001
+            if not settings.allow_simulated:
+                raise
             logger.warning("Gemini provider could not be constructed (%s); using mock", exc)
             return mock
-        return FallbackProvider(primary, mock)
+        # Without a permitted stand-in there is nothing to fall back to, so a
+        # runtime failure surfaces as an error instead of changing behaviour.
+        return FallbackProvider(primary, mock) if settings.allow_simulated else primary
 
     if settings.llm_provider == "sarvam":
         if not settings.sarvam_api_key:
+            if not settings.allow_simulated:
+                raise RuntimeError("Sarvam is selected but SARVAM_API_KEY is empty")
             logger.warning("LLM_PROVIDER=sarvam but SARVAM_API_KEY is empty; using mock provider")
             return mock
         from .sarvam import SarvamProvider
@@ -52,10 +65,14 @@ def build_provider(settings: Settings) -> LLMProvider:
                 settings.sarvam_api_key, settings.sarvam_model, settings.llm_timeout_seconds
             )
         except Exception as exc:  # noqa: BLE001
+            if not settings.allow_simulated:
+                raise
             logger.warning("Sarvam provider could not be constructed (%s); using mock", exc)
             return mock
-        return FallbackProvider(primary, mock)
+        return FallbackProvider(primary, mock) if settings.allow_simulated else primary
 
+    if not settings.allow_simulated:
+        raise RuntimeError(f"Unknown LLM provider {settings.llm_provider!r}")
     return mock
 
 

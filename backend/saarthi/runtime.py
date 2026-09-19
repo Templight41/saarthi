@@ -59,6 +59,9 @@ class SaarthiRuntime:
 
         llm = build_provider(settings)
         memory = build_memory(settings)
+        bind = getattr(memory, "bind", None)
+        if bind is not None:
+            bind(session_factory)
         policy = PolicyEngine()
         planner = Planner(settings)
         executor = ActionExecutor(registry)
@@ -113,10 +116,24 @@ class SaarthiRuntime:
     def health(self) -> dict:
         from .llm.factory import provider_info
 
+        llm = provider_info(self.llm)
+        memory_name = getattr(self.memory, "name", "unknown")
+        workflow_name = getattr(self.workflows, "name", "none")
+        voice_name = self.settings.voice_provider
+
+        simulated = {
+            "llm": bool(llm.get("simulated")),
+            "memory": memory_name == "local_index",
+            "workflows": workflow_name == "local",
+            "voice": voice_name == "mock",
+        }
         return {
             "status": "ok",
-            "llm": provider_info(self.llm),
-            "memory": {"provider": getattr(self.memory, "name", "unknown")},
-            "workflows": {"engine": getattr(self.workflows, "name", "none")},
+            "llm": {**llm, "backend": getattr(self.llm, "backend", None)},
+            "memory": {"provider": memory_name},
+            "workflows": {"engine": workflow_name},
+            "voice": {"provider": voice_name, "model": self.settings.gemini_transcribe_model},
             "database": "postgres" if not self.settings.is_sqlite else "sqlite",
+            "simulated": simulated,
+            "all_real": not any(simulated.values()),
         }

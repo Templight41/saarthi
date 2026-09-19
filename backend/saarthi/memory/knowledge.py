@@ -98,7 +98,6 @@ async def seed_knowledge(session, memory) -> int:
 
     from ..database.enums import CaseStatus
     from ..database.models import Case, MemoryDocument
-    from .service import ingest_case_document
 
     existing = await session.scalar(
         select(func.count()).select_from(MemoryDocument).where(MemoryDocument.kind == "knowledge")
@@ -111,8 +110,15 @@ async def seed_knowledge(session, memory) -> int:
             )
         created = len(KNOWLEDGE_DOCS)
 
-    resolved = await session.scalars(select(Case).where(Case.status == CaseStatus.RESOLVED))
+    # Go through the provider, not the raw builder, so an embedding backend
+    # actually indexes these rather than leaving the vector store empty.
+    resolved = list(await session.scalars(select(Case).where(Case.status == CaseStatus.RESOLVED)))
     for case in resolved:
-        if await ingest_case_document(session, case.id):
+        if await memory.remember_case(session, case.id):
             created += 1
+
+    # One batched call covers everything just written.
+    backfill = getattr(memory, "backfill", None)
+    if backfill is not None:
+        await backfill(session)
     return created

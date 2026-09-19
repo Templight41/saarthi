@@ -98,6 +98,64 @@ class MockTranscriber:
         )
 
 
+class GeminiTranscriber:
+    """Transcription through Vertex AI, using the same credentials as the agent.
+
+    `gemini-3.5-transcribe-preview` is a dedicated speech model and returns a
+    structured `audio_transcription` part alongside the text, so the text
+    accessor is used defensively.
+    """
+
+    name = "gemini"
+
+    def __init__(self, settings: Settings) -> None:
+        from ..llm.gemini import build_genai_client
+
+        self._client = build_genai_client(settings)
+        self._model = settings.gemini_transcribe_model
+        self._settings = settings
+
+    async def transcribe(self, path: Path, *, hint: str | None = None) -> TranscribeResult:
+        import time
+
+        from google.genai import types
+
+        started = time.monotonic()
+        audio = path.read_bytes()
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model,
+                contents=[
+                    types.Part.from_bytes(data=audio, mime_type="audio/wav"),
+                    "Transcribe this audio verbatim. Output only the transcript, nothing else.",
+                ],
+            ),
+            timeout=60.0,
+        )
+
+        text = (getattr(response, "text", "") or "").strip()
+        if not text:
+            # The speech model can return the transcript as a non-text part.
+            for candidate in getattr(response, "candidates", []) or []:
+                for part in getattr(candidate.content, "parts", []) or []:
+                    value = getattr(part, "text", None)
+                    if value:
+                        text = value.strip()
+                        break
+        if not text:
+            raise RuntimeError("Transcription returned no text")
+
+        return TranscribeResult(
+            text=text,
+            language=self._settings.voice_language,
+            duration_seconds=0.0,
+            provider=self.name,
+            model=self._model,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            simulated=False,
+        )
+
+
 class SarvamTranscriber:
     name = "sarvam"
 
@@ -171,10 +229,20 @@ class FasterWhisperTranscriber:
 
 
 def build_transcriber(settings: Settings) -> Transcriber:
+    """A real speech model unless deterministic stand-ins are explicitly allowed."""
     provider = settings.voice_provider
+    wants_mock = provider == "mock" or settings.whisper_model == "mock"
 
-    if provider == "mock" or settings.whisper_model == "mock":
+    if wants_mock:
+        if not settings.allow_simulated:
+            raise RuntimeError(
+                "VOICE_PROVIDER=mock is refused. Use gemini, sarvam or "
+                "faster_whisper, or set ALLOW_SIMULATED=true."
+            )
         return MockTranscriber()
+
+    if provider in {"gemini", "auto"} and settings.gemini_configured:
+        return GeminiTranscriber(settings)
 
     if provider in {"sarvam", "auto"} and settings.sarvam_api_key:
         return SarvamTranscriber(
@@ -184,11 +252,19 @@ def build_transcriber(settings: Settings) -> Transcriber:
     if provider in {"faster_whisper", "auto"}:
         try:
             return FasterWhisperTranscriber(settings.whisper_model, settings.whisper_compute_type)
-        except ImportError:
+        except ImportError as exc:
+            if not settings.allow_simulated:
+                raise RuntimeError(
+                    "faster-whisper is not installed. Run `make setup-voice`."
+                ) from exc
             logger.warning("faster-whisper is not installed; using the scripted transcriber")
         except Exception as exc:  # noqa: BLE001
+            if not settings.allow_simulated:
+                raise
             logger.warning("Could not load faster-whisper (%s); using the scripted transcriber", exc)
 
+    if not settings.allow_simulated:
+        raise RuntimeError(f"No usable speech provider for VOICE_PROVIDER={provider}")
     return MockTranscriber()
 
 

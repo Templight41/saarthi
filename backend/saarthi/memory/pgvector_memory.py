@@ -42,10 +42,12 @@ def l2_normalise(vector: list[float]) -> list[float]:
 class PgVectorMemory:
     name = "pgvector"
 
-    def __init__(self, settings: Settings, fallback: LocalIndexMemory) -> None:
+    def __init__(self, settings: Settings, fallback: LocalIndexMemory, session_factory=None) -> None:
         self.settings = settings
         self.fallback = fallback
+        self.session_factory = session_factory
         self._client = None
+        self._ready = False
 
     def _genai(self):
         if self._client is None:
@@ -72,16 +74,44 @@ class PgVectorMemory:
         values = list(response.embeddings[0].values)
         return l2_normalise(values)
 
-    async def ensure_column(self, session: AsyncSession) -> None:
-        """Add the vector column on first use, so no migration is needed."""
-        await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await session.execute(
-            text(
-                "ALTER TABLE memory_documents ADD COLUMN IF NOT EXISTS "
-                f"embedding vector({self.settings.embedding_dimensions})"
-            )
+    async def embed_many(self, contents: list[str]) -> list[list[float]]:
+        """One API call for many documents. Seeding embeds 11 at once."""
+        if not contents:
+            return []
+        client = self._genai()
+        response = await asyncio.wait_for(
+            client.aio.models.embed_content(
+                model=self.settings.embedding_model,
+                contents=contents,
+                config={
+                    "task_type": "RETRIEVAL_DOCUMENT",
+                    "output_dimensionality": self.settings.embedding_dimensions,
+                },
+            ),
+            timeout=max(self.settings.memory_timeout_seconds, 30.0),
         )
-        await session.commit()
+        return [l2_normalise(list(e.values)) for e in response.embeddings]
+
+    def bind(self, session_factory) -> None:
+        self.session_factory = session_factory
+
+    async def ensure_schema(self, session_factory) -> None:
+        self.session_factory = self.session_factory or session_factory
+        """Create the vector column once, at startup, in its own session.
+
+        Doing this inside a caller's session would commit their in-flight work
+        early, and a DDL failure would poison their transaction.
+        """
+        async with session_factory() as session:
+            await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await session.execute(
+                text(
+                    "ALTER TABLE memory_documents ADD COLUMN IF NOT EXISTS "
+                    f"embedding vector({self.settings.embedding_dimensions})"
+                )
+            )
+            await session.commit()
+        self._ready = True
 
     async def search(
         self,
@@ -95,20 +125,23 @@ class PgVectorMemory:
     ) -> dict:
         started = utcnow()
         try:
-            await self.ensure_column(session)
             vector = await self.embed(text, task_type="RETRIEVAL_QUERY")
             literal = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
 
             from sqlalchemy import text as sql
 
-            rows = await session.execute(
+            # Deliberately not the caller's session.
+            owned = self.session_factory() if self.session_factory else None
+            query_session = owned or session
+            rows = await query_session.execute(
                 sql(
                     """
                     SELECT id, kind, ref_id, merchant_id, title, body, header,
                            1 - (embedding <=> CAST(:vec AS vector)) AS similarity
                     FROM memory_documents
                     WHERE embedding IS NOT NULL
-                      AND (:exclude IS NULL OR ref_id IS DISTINCT FROM :exclude)
+                      AND (CAST(:exclude AS text) IS NULL
+                           OR ref_id IS DISTINCT FROM CAST(:exclude AS text))
                     ORDER BY embedding <=> CAST(:vec AS vector)
                     LIMIT :limit
                     """
@@ -137,6 +170,9 @@ class PgVectorMemory:
                     )
                 )
 
+            if owned is not None:
+                await owned.close()
+
             if not hits:
                 raise RuntimeError("no embedded documents yet")
 
@@ -153,7 +189,10 @@ class PgVectorMemory:
                 "latency_ms": int((utcnow() - started).total_seconds() * 1000),
             }
         except Exception as exc:  # noqa: BLE001 - memory must never block a case
-            logger.warning("pgvector search failed (%s); falling back to the keyword index", exc)
+            logger.warning(
+                "pgvector search failed (%s: %s); falling back to the keyword index",
+                type(exc).__name__, str(exc)[:200],
+            )
             result = await self.fallback.search(
                 session,
                 text=text,
@@ -174,15 +213,14 @@ class PgVectorMemory:
     async def add_knowledge(
         self, session: AsyncSession, *, title: str, content: str, tags: list[str]
     ) -> str:
-        doc_id = await self.fallback.add_knowledge(
+        # Left unembedded on purpose: seeding writes many of these, and one
+        # batched backfill is far faster than an API call per document.
+        return await self.fallback.add_knowledge(
             session, title=title, content=content, tags=tags
         )
-        await self._embed_document(session, doc_id)
-        return doc_id
 
     async def _embed_document(self, session: AsyncSession, doc_id: str) -> None:
         try:
-            await self.ensure_column(session)
             doc = await session.get(MemoryDocument, doc_id)
             if doc is None:
                 return
@@ -199,16 +237,42 @@ class PgVectorMemory:
             )
             await session.flush()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not embed %s (%s); the keyword index still covers it", doc_id, exc)
+            logger.warning(
+                "Could not embed %s (%s: %s); the keyword index still covers it",
+                doc_id, type(exc).__name__, exc,
+            )
 
     async def backfill(self, session: AsyncSession) -> int:
-        """Embed anything the keyword index already holds."""
-        rows = await session.scalars(
-            select(MemoryDocument.id).where(MemoryDocument.embedded_at.is_(None))
+        """Embed every document that has no vector yet, in one batched call."""
+        rows = list(
+            await session.execute(
+                select(MemoryDocument.id, MemoryDocument.title, MemoryDocument.body).where(
+                    MemoryDocument.embedded_at.is_(None)
+                )
+            )
         )
-        count = 0
-        for doc_id in rows:
-            await self._embed_document(session, doc_id)
-            count += 1
+        if not rows:
+            return 0
+        try:
+            vectors = await self.embed_many([f"{r.title}\n{r.body}" for r in rows])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Batch embedding failed (%s: %s); the keyword index still covers these",
+                type(exc).__name__, exc,
+            )
+            return 0
+
+        from sqlalchemy import text as sql
+
+        for row, vector in zip(rows, vectors, strict=False):
+            literal = "[" + ",".join(f"{v:.6f}" for v in vector) + "]"
+            await session.execute(
+                sql(
+                    "UPDATE memory_documents SET embedding = CAST(:vec AS vector), "
+                    "embedded_at = now() WHERE id = :id"
+                ),
+                {"vec": literal, "id": row.id},
+            )
         await session.commit()
-        return count
+        logger.info("Embedded %d memory documents", len(rows))
+        return len(rows)

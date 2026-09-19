@@ -350,14 +350,26 @@ def _maybe_int(value) -> int | None:
 
 
 def build_memory(settings: Settings) -> SaarthiMemory:
-    # pgvector is used when embeddings are available; the local index is the
-    # default and is always the fallback.
-    if settings.memory_provider == "pgvector" and settings.gemini_configured:
-        from .pgvector_memory import PgVectorMemory
+    """Embeddings when configured; the keyword index only if explicitly allowed."""
+    local = LocalIndexMemory(settings)
 
-        return PgVectorMemory(settings, LocalIndexMemory(settings))
-    if settings.memory_provider == "auto" and settings.gemini_configured and not settings.is_sqlite:
-        from .pgvector_memory import PgVectorMemory
+    if settings.memory_provider == "local":
+        if not settings.allow_simulated:
+            raise RuntimeError(
+                "MEMORY_PROVIDER=local is a keyword index, not embeddings. "
+                "Use pgvector, or set ALLOW_SIMULATED=true."
+            )
+        return local
 
-        return PgVectorMemory(settings, LocalIndexMemory(settings))
-    return LocalIndexMemory(settings)
+    if not settings.gemini_configured:
+        if not settings.allow_simulated:
+            raise RuntimeError("Embedding-backed memory needs Gemini configured")
+        return local
+    if settings.is_sqlite:
+        if not settings.allow_simulated:
+            raise RuntimeError("pgvector memory requires PostgreSQL, not SQLite")
+        return local
+
+    from .pgvector_memory import PgVectorMemory
+
+    return PgVectorMemory(settings, local)
