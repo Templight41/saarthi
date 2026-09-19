@@ -323,3 +323,113 @@ def test_an_announcement_the_identified_transaction_explains_is_not_a_phantom():
         _diagnosis(), _context([_phantom(reference="TXN_SOUNDBOX_PENDING")])
     )
     assert clamped.root_cause is RootCause.SETTLEMENT_DELAY
+
+
+# --------------------------------------------------------------------------
+# Which transaction the merchant meant
+# --------------------------------------------------------------------------
+async def _ledger(session):
+    """One merchant, three transactions: two pending, one disputed."""
+    from datetime import timedelta
+
+    from saarthi.database.database import utcnow
+    from saarthi.database.enums import DisputeStatus, DisputeType
+    from saarthi.database.models import Dispute
+
+    await _merchant(session, "M9100")
+    now = utcnow()
+    rows = [
+        ("TXN_PENDING_A", Decimal("3200.00"), PaymentStatus.PAYMENT_PENDING, SettlementStatus.PENDING),
+        ("TXN_PENDING_B", Decimal("4800.00"), PaymentStatus.PAYMENT_PENDING, SettlementStatus.PENDING),
+        ("TXN_DISPUTED", Decimal("15000.00"), PaymentStatus.SUCCESS, SettlementStatus.COMPLETED),
+        ("TXN_SETTLED", Decimal("2500.00"), PaymentStatus.SUCCESS, SettlementStatus.COMPLETED),
+    ]
+    for index, (txn_id, amount, pay, stl) in enumerate(rows):
+        session.add(
+            Transaction(
+                id=txn_id,
+                merchant_id="M9100",
+                amount=amount,
+                payment_status=pay,
+                customer_debited=True,
+                created_at=now - timedelta(minutes=index),
+            )
+        )
+        await session.flush()
+        session.add(
+            Settlement(id=f"STL-91{index}", transaction_id=txn_id, status=stl, expected_at=now)
+        )
+    session.add(
+        Dispute(
+            id="DSP-910",
+            transaction_id="TXN_DISPUTED",
+            type=DisputeType.PRODUCT_QUALITY,
+            status=DisputeStatus.OPEN,
+            requested_amount=Decimal("15000.00"),
+        )
+    )
+    await session.flush()
+
+
+async def test_a_pending_payment_question_never_lands_on_a_dispute(session):
+    """The bug this rewrite exists for.
+
+    Two pending payments meant the "exactly one pending" rule failed, and the
+    cascade then fell through to "exactly one disputed" — answering a question
+    about a pending payment with an unrelated ₹15,000 quality dispute.
+    """
+    from saarthi.agent.identify import resolve_transaction
+
+    await _ledger(session)
+    resolved, how, candidates = await resolve_transaction(
+        session, "M9100", "Customer paid but the transaction is still pending"
+    )
+
+    assert resolved != "TXN_DISPUTED"
+    assert how == "AMBIGUOUS"
+    # Both pending payments are offered to the person who has to decide.
+    assert set(candidates) == {"TXN_PENDING_A", "TXN_PENDING_B"}
+
+
+async def test_the_amount_the_merchant_named_decides_it(session):
+    from saarthi.agent.identify import resolve_transaction
+
+    await _ledger(session)
+    resolved, how, _ = await resolve_transaction(
+        session, "M9100", "Customer paid ₹3,200 but it is still pending"
+    )
+    assert (resolved, how) == ("TXN_PENDING_A", "AMOUNT")
+
+
+async def test_an_amount_that_contradicts_the_symptom_is_not_guessed(session):
+    """₹2,500 is settled; the pending payments are other amounts. Two
+    transactions each fit half of what was said, so neither is chosen."""
+    from saarthi.agent.identify import resolve_transaction
+
+    await _ledger(session)
+    resolved, how, candidates = await resolve_transaction(
+        session, "M9100", "Customer paid ₹2,500 but the transaction is pending"
+    )
+    assert resolved is None
+    assert how == "AMBIGUOUS"
+    assert "TXN_SETTLED" in candidates
+
+
+async def test_a_dispute_question_still_finds_the_dispute(session):
+    from saarthi.agent.identify import resolve_transaction
+
+    await _ledger(session)
+    resolved, how, _ = await resolve_transaction(
+        session, "M9100", "The customer says the product quality was poor"
+    )
+    assert (resolved, how) == ("TXN_DISPUTED", "TOPIC")
+
+
+async def test_an_explicit_id_always_wins(session):
+    from saarthi.agent.identify import resolve_transaction
+
+    await _ledger(session)
+    resolved, how, _ = await resolve_transaction(
+        session, "M9100", "Something is wrong with TXN_DISPUTED", hint=None
+    )
+    assert (resolved, how) == ("TXN_DISPUTED", "REGEX")
