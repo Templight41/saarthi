@@ -51,12 +51,34 @@ demo-reset: seed ## Reset the demo to its starting state
 demo-scenario: ## Run a scenario, e.g. make demo-scenario S=B
 	curl -fsS -X POST localhost:8000/api/simulation/scenario/$(S) | head -c 400; echo
 
-n8n-up: ## Start n8n
-	docker compose --profile n8n up -d n8n
-	@echo "n8n is at http://localhost:5678 — import from n8n/workflows/"
+n8n-install: ## Install n8n under Node 24 (its native module needs <25)
+	@command -v brew >/dev/null || { echo "Homebrew is required"; exit 1; }
+	@ls /opt/homebrew/Cellar/node@24/*/bin/node >/dev/null 2>&1 || brew install node@24
+	@mkdir -p $(HOME)/.saarthi-n8n
+	@cd $(HOME)/.saarthi-n8n && [ -f package.json ] || npm init -y > /dev/null
+	@cd $(HOME)/.saarthi-n8n && PATH="$$(dirname $$(ls /opt/homebrew/Cellar/node@24/*/bin/node | head -1)):$$PATH" npm install n8n
+	@echo "n8n installed"
 
-n8n-import: ## Import the workflows into a running n8n
-	docker compose exec n8n n8n import:workflow --separate --input=/workflows
-	docker compose restart n8n
+n8n-import: ## Import and publish the workflows
+	./n8n/run-n8n.sh import:workflow --separate --input=n8n/workflows
+	@for id in saarthi-memory-ingest saarthi-scheduled-refund saarthi-settlement-monitor saarthi-failure-recovery saarthi-human-approval; do \
+		./n8n/run-n8n.sh publish:workflow --id=$$id > /dev/null; done
+	@echo "5 workflows imported and published"
 
-.PHONY: help setup setup-voice db-up db-down db-reset seed backend frontend test test-backend test-frontend lint demo-reset demo-scenario n8n-up n8n-import
+n8n-up: n8n-import ## Import workflows and start n8n on :5678
+	@pkill -f "saarthi-n8n/node_modules/.bin/n8n" 2>/dev/null || true
+	@sleep 2
+	@nohup ./n8n/run-n8n.sh start > /tmp/saarthi-n8n.log 2>&1 &
+	@until curl -sf -o /dev/null -m 2 localhost:5678/healthz 2>/dev/null; do sleep 2; done
+	@echo "n8n is live at http://localhost:5678"
+
+n8n-down: ## Stop n8n
+	@pkill -f "saarthi-n8n/node_modules/.bin/n8n" 2>/dev/null && echo "n8n stopped" || echo "n8n was not running"
+
+n8n-logs: ## Tail the n8n log
+	tail -f /tmp/saarthi-n8n.log
+
+check-providers: ## Show which providers are actually live
+	@curl -sf localhost:8000/api/health | python3 -m json.tool
+
+.PHONY: help setup setup-voice db-up db-down db-reset seed backend frontend test test-backend test-frontend lint demo-reset demo-scenario n8n-install n8n-import n8n-up n8n-down n8n-logs check-providers
